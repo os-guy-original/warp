@@ -5,6 +5,7 @@
 use anyhow::Result;
 use warp_core::{
     channel::{Channel, ChannelConfig, ChannelState, OzConfig, WarpServerConfig},
+    features::FeatureFlag,
     AppId,
 };
 
@@ -27,6 +28,7 @@ fn main() -> Result<()> {
         state = state.with_additional_features(warp_core::features::DEBUG_FLAGS);
         state = state.with_additional_features(warp_core::features::DOGFOOD_FLAGS);
     }
+    state = state.with_additional_features(&[FeatureFlag::OpenAiCompatibleEndpoints]);
     ChannelState::set(state);
 
     warp::run()
