@@ -285,6 +285,8 @@ pub fn get_tool_definitions() -> Vec<OpenAiTool> {
 pub struct StreamingState {
     message_id: Option<String>,
     tool_calls_accumulated: Vec<OpenAiToolCall>,
+    finished: bool,
+    failed: bool,
 }
 
 impl StreamingState {
@@ -292,11 +294,25 @@ impl StreamingState {
         Self {
             message_id: None,
             tool_calls_accumulated: Vec::new(),
+            finished: false,
+            failed: false,
         }
     }
 
     pub fn take_accumulated_tool_calls(&mut self) -> Vec<OpenAiToolCall> {
         std::mem::take(&mut self.tool_calls_accumulated)
+    }
+
+    pub fn mark_finished(&mut self) {
+        self.finished = true;
+    }
+
+    pub fn mark_failed(&mut self) {
+        self.failed = true;
+    }
+
+    pub fn did_finish_or_fail(&self) -> bool {
+        self.finished || self.failed
     }
 }
 

@@ -27,6 +27,11 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
 
+      - name: Install cargo release dependencies
+        shell: pwsh
+        run: |
+          cargo install --locked cargo-about@0.8.4
+
       - name: Install Windows build dependencies
         shell: pwsh
         run: |

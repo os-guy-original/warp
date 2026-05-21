@@ -2365,7 +2365,7 @@ impl Input {
                     // Handled by UseAgentToolbar's subscription, not here.
                 }
                 AgentInputFooterEvent::SubmitQuickCommand(command) => {
-                    let _ = command;
+                    me.try_execute_command_from_source(command, CommandExecutionSource::User, ctx);
                 }
                 AgentInputFooterEvent::SubmitQuickPrompt(prompt) => {
                     me.submit_queued_prompt(prompt.clone(), ctx);

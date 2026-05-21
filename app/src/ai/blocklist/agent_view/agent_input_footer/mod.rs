@@ -2524,7 +2524,7 @@ impl TypedActionView for AgentInputFooter {
                 ctx.emit(AgentInputFooterEvent::StopRemoteControl);
             }
             AgentInputFooterAction::SubmitQuickCommand(command) => {
-                ctx.emit(AgentInputFooterEvent::WriteToPty(format!("{command}\n")));
+                ctx.emit(AgentInputFooterEvent::SubmitQuickCommand(command.clone()));
             }
             AgentInputFooterAction::SubmitQuickPrompt(prompt) => {
                 ctx.emit(AgentInputFooterEvent::SubmitQuickPrompt(prompt.clone()));
