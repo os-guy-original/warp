@@ -57,19 +57,22 @@ pub async fn generate_multi_agent_output(
                     );
                     let (tx, rx) = async_channel::unbounded();
                     let _ = tx
-                        .send(Err(Arc::new(crate::server::server_api::AIApiError::NoUserFacingContent)))
+                        .send(Err(Arc::new(
+                            crate::server::server_api::AIApiError::NoUserFacingContent,
+                        )))
                         .await;
                     return Ok(Box::pin(rx));
                 }
 
                 let client = server_api.http_client();
-                let result = crate::ai::openai_compatible_client::generate_openai_compatible_output(
-                    &client,
-                    &endpoint,
-                    request,
-                    cancellation_rx,
-                )
-                .await;
+                let result =
+                    crate::ai::openai_compatible_client::generate_openai_compatible_output(
+                        &client,
+                        &endpoint,
+                        request,
+                        cancellation_rx,
+                    )
+                    .await;
 
                 return match result {
                     Ok(stream) => Ok(stream),

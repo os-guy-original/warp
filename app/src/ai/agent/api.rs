@@ -312,14 +312,18 @@ impl RequestParams {
         // Resolve custom OpenAI-compatible endpoint if model ID uses custom: prefix
         #[cfg(not(target_family = "wasm"))]
         let openai_compatible_endpoint = {
-            let flag_enabled = warp_core::features::FeatureFlag::OpenAiCompatibleEndpoints.is_enabled();
+            let flag_enabled =
+                warp_core::features::FeatureFlag::OpenAiCompatibleEndpoints.is_enabled();
             let setting_enabled = *ai_settings.openai_compatible_enabled;
             let model_id = request_input.model_id.as_str();
             let prefix = ai::openai_compatible::OpenAiCompatibleEndpoint::ID_PREFIX;
             let has_prefix = model_id.starts_with(prefix);
             log::debug!(
                 "RequestParams resolve: model='{}', flag={}, setting={}, has_prefix={}",
-                model_id, flag_enabled, setting_enabled, has_prefix
+                model_id,
+                flag_enabled,
+                setting_enabled,
+                has_prefix
             );
             if flag_enabled && setting_enabled && has_prefix {
                 let resolved = ai_settings.openai_compatible_endpoints.get_by_llm_id(model_id)
@@ -346,7 +350,10 @@ impl RequestParams {
                         }
                         ep
                     });
-                log::debug!("RequestParams resolved endpoint: {:?}", resolved.as_ref().map(|e| &e.display_name));
+                log::debug!(
+                    "RequestParams resolved endpoint: {:?}",
+                    resolved.as_ref().map(|e| &e.display_name)
+                );
                 resolved
             } else {
                 None
@@ -354,10 +361,16 @@ impl RequestParams {
         };
 
         #[cfg(not(target_family = "wasm"))]
-        let root_task_id = conversation.tasks.first()
+        let root_task_id = conversation
+            .tasks
+            .first()
             .map(|t| t.id.clone())
             .unwrap_or_else(|| {
-                let mut sorted_keys: Vec<_> = request_input.input_messages.keys().map(|k| k.to_string()).collect();
+                let mut sorted_keys: Vec<_> = request_input
+                    .input_messages
+                    .keys()
+                    .map(|k| k.to_string())
+                    .collect();
                 sorted_keys.sort();
                 sorted_keys.into_iter().next().unwrap_or_default()
             });
@@ -393,10 +406,10 @@ impl RequestParams {
             supported_tools_override: request_input.supported_tools_override.clone(),
             parent_agent_id: None,
             agent_name: None,
-        #[cfg(not(target_family = "wasm"))]
-        openai_compatible_endpoint,
-        #[cfg(not(target_family = "wasm"))]
-        root_task_id,
+            #[cfg(not(target_family = "wasm"))]
+            openai_compatible_endpoint,
+            #[cfg(not(target_family = "wasm"))]
+            root_task_id,
         }
     }
 }

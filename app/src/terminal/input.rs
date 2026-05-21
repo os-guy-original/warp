@@ -2364,6 +2364,9 @@ impl Input {
                 | AgentInputFooterEvent::StopRemoteControl => {
                     // Handled by UseAgentToolbar's subscription, not here.
                 }
+                AgentInputFooterEvent::SubmitQuickCommand(command) => {
+                    me.submit_queued_prompt(command.clone(), ctx);
+                }
                 // WriteToPty, InsertIntoCLIRichInput, ToggleCodeReviewPane, and ToggleFileExplorer
                 // are handled by UseAgentToolbar's subscription, not here.
                 AgentInputFooterEvent::WriteToPty(_)

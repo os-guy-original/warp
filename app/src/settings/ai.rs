@@ -9,11 +9,11 @@ use std::path::PathBuf;
 use indexmap::IndexMap;
 
 use crate::ai::request_usage_model::RequestLimitInfo;
-use ai::openai_compatible::OpenAiCompatibleEndpoints;
 use crate::auth::AuthStateProvider;
 use crate::report_if_error;
 use crate::terminal::CLIAgent;
 use crate::workspaces::user_workspaces::UserWorkspaces;
+use ai::openai_compatible::OpenAiCompatibleEndpoints;
 use cfg_if::cfg_if;
 use chrono::{DateTime, Utc};
 use lazy_static::lazy_static;
@@ -708,6 +708,45 @@ impl settings_value::SettingsValue for ToolbarCommandMap {
     }
 }
 
+#[derive(
+    Debug,
+    Serialize,
+    Deserialize,
+    Clone,
+    Default,
+    PartialEq,
+    schemars::JsonSchema,
+    settings_value::SettingsValue,
+)]
+#[schemars(description = "A quick agent prompt shown as a footer button.")]
+pub struct AgentQuickCommand {
+    #[serde(default)]
+    #[schemars(description = "Short label shown on the footer button.")]
+    pub label: String,
+    #[serde(default)]
+    #[schemars(description = "Prompt text submitted when the button is clicked.")]
+    pub command: String,
+}
+
+impl AgentQuickCommand {
+    pub fn display_label(&self) -> &str {
+        let label = self.label.trim();
+        if label.is_empty() {
+            self.command.trim()
+        } else {
+            label
+        }
+    }
+
+    pub fn command_text(&self) -> &str {
+        self.command.trim()
+    }
+
+    pub fn is_usable(&self) -> bool {
+        !self.command_text().is_empty()
+    }
+}
+
 define_settings_group!(AISettings, settings: [
     // If `false`, all AI features are disabled.
     is_any_ai_enabled: IsAnyAIEnabled {
@@ -1081,6 +1120,15 @@ aws_bedrock_login_banner_dismissed: AwsBedrockLoginBannerDismissed {
     toml_path: "agents.openai_compatible.endpoints",
     description: "List of custom OpenAI-compatible API endpoints (e.g. Ollama, vLLM, LM Studio).",
 }
+    quick_agent_commands: QuickAgentCommands {
+        type: Vec<AgentQuickCommand>,
+        default: vec![],
+        supported_platforms: SupportedPlatforms::DESKTOP,
+        sync_to_cloud: SyncToCloud::Never,
+        private: false,
+        toml_path: "agents.quick_commands",
+        description: "Pinned quick commands shown in the agent input footer.",
+    }
 // Whether or not the user wants agent mode requests to use their saved rules.
     memory_enabled: MemoryEnabled {
         type: bool,

@@ -32,7 +32,16 @@ impl SecureStorage {
         let mut filename = String::with_capacity(key.len());
         for byte in key.bytes() {
             match byte {
-                b'%' | b'<' | b'>' | b':' | b'"' | b'/' | b'\\' | b'|' | b'?' | b'*'
+                b'%'
+                | b'<'
+                | b'>'
+                | b':'
+                | b'"'
+                | b'/'
+                | b'\\'
+                | b'|'
+                | b'?'
+                | b'*'
                 | 0x00..=0x1F => {
                     filename.push('%');
                     filename.push(hex_digit(byte >> 4));

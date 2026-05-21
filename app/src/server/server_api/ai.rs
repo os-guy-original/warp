@@ -2478,19 +2478,17 @@ impl From<warp_graphql::workspace::LlmProvider> for LLMProvider {
             warp_graphql::workspace::LlmProvider::Google => LLMProvider::Google,
             warp_graphql::workspace::LlmProvider::Xai => LLMProvider::Xai,
             warp_graphql::workspace::LlmProvider::Unknown => LLMProvider::Unknown,
-            warp_graphql::workspace::LlmProvider::Other(value) => {
-                match value.as_str() {
-                    "OPENROUTER" | "Openrouter" => LLMProvider::Openrouter,
-                    "AWS_BEDROCK" | "AwsBedrock" => LLMProvider::AwsBedrock,
-                    "OPENAI_COMPATIBLE" | "OpenAiCompatible" => LLMProvider::OpenAiCompatible,
-                    _ => {
-                        report_error!(anyhow!(
-                            "Invalid LlmProvider '{value}'. Make sure to update client GraphQL types!"
-                        ));
-                        LLMProvider::Unknown
-                    }
+            warp_graphql::workspace::LlmProvider::Other(value) => match value.as_str() {
+                "OPENROUTER" | "Openrouter" => LLMProvider::Openrouter,
+                "AWS_BEDROCK" | "AwsBedrock" => LLMProvider::AwsBedrock,
+                "OPENAI_COMPATIBLE" | "OpenAiCompatible" => LLMProvider::OpenAiCompatible,
+                _ => {
+                    report_error!(anyhow!(
+                        "Invalid LlmProvider '{value}'. Make sure to update client GraphQL types!"
+                    ));
+                    LLMProvider::Unknown
                 }
-            }
+            },
         }
     }
 }

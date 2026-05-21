@@ -336,7 +336,10 @@ pub fn from_request_params(params: &RequestParams) -> OpenAiCompatibleRequest {
                         context_parts.push(format!("Selected text:\n{}", text));
                     }
                     AIAgentContext::CurrentTime { current_time } => {
-                        context_parts.push(format!("Current time: {}", current_time.format("%Y-%m-%d %H:%M:%S %Z")));
+                        context_parts.push(format!(
+                            "Current time: {}",
+                            current_time.format("%Y-%m-%d %H:%M:%S %Z")
+                        ));
                     }
                     AIAgentContext::Git { head, branch } => {
                         if let Some(branch) = branch {
@@ -422,13 +425,15 @@ pub fn from_request_params(params: &RequestParams) -> OpenAiCompatibleRequest {
 
     let task_id = params.root_task_id.clone();
     if task_id.is_empty() {
-        log::warn!("Custom endpoint: root_task_id is empty in RequestParams, messages will not render");
+        log::warn!(
+            "Custom endpoint: root_task_id is empty in RequestParams, messages will not render"
+        );
     }
 
     let has_tool_call_results_in_tasks = params.tasks.iter().any(|t| {
-        t.messages.iter().any(|m| {
-            matches!(m.message, Some(api::message::Message::ToolCallResult(_)))
-        })
+        t.messages
+            .iter()
+            .any(|m| matches!(m.message, Some(api::message::Message::ToolCallResult(_))))
     });
 
     log::info!(
@@ -446,31 +451,29 @@ pub fn from_request_params(params: &RequestParams) -> OpenAiCompatibleRequest {
         stream: true,
         task_id,
         conversation_id,
-        has_new_user_facing_content: has_user_query || has_action_result || has_tool_call_results_in_tasks,
+        has_new_user_facing_content: has_user_query
+            || has_action_result
+            || has_tool_call_results_in_tasks,
         user_query: last_user_query,
     }
 }
 
 fn proto_message_to_chat_message(msg: &api::Message) -> Option<ChatMessage> {
     match &msg.message {
-        Some(api::message::Message::UserQuery(uq)) => {
-            Some(ChatMessage {
-                role: "user".to_string(),
-                content: Some(serde_json::Value::String(uq.query.clone())),
-                tool_calls: None,
-                tool_call_id: None,
-                name: None,
-            })
-        }
-        Some(api::message::Message::AgentOutput(ao)) => {
-            Some(ChatMessage {
-                role: "assistant".to_string(),
-                content: Some(serde_json::Value::String(ao.text.clone())),
-                tool_calls: None,
-                tool_call_id: None,
-                name: None,
-            })
-        }
+        Some(api::message::Message::UserQuery(uq)) => Some(ChatMessage {
+            role: "user".to_string(),
+            content: Some(serde_json::Value::String(uq.query.clone())),
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+        }),
+        Some(api::message::Message::AgentOutput(ao)) => Some(ChatMessage {
+            role: "assistant".to_string(),
+            content: Some(serde_json::Value::String(ao.text.clone())),
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+        }),
         Some(api::message::Message::ToolCall(tc)) => {
             let (name, arguments) = proto_tool_call_to_openai(&tc.tool)?;
             Some(ChatMessage {
@@ -495,20 +498,23 @@ fn proto_message_to_chat_message(msg: &api::Message) -> Option<ChatMessage> {
                 name: None,
             })
         }
-        Some(api::message::Message::AgentReasoning(ar)) => {
-            Some(ChatMessage {
-                role: "assistant".to_string(),
-                content: Some(serde_json::Value::String(format!("[thinking]\n{}\n[/thinking]", ar.reasoning))),
-                tool_calls: None,
-                tool_call_id: None,
-                name: None,
-            })
-        }
+        Some(api::message::Message::AgentReasoning(ar)) => Some(ChatMessage {
+            role: "assistant".to_string(),
+            content: Some(serde_json::Value::String(format!(
+                "[thinking]\n{}\n[/thinking]",
+                ar.reasoning
+            ))),
+            tool_calls: None,
+            tool_call_id: None,
+            name: None,
+        }),
         _ => None,
     }
 }
 
-fn proto_tool_call_to_openai(tool: &Option<api::message::tool_call::Tool>) -> Option<(String, String)> {
+fn proto_tool_call_to_openai(
+    tool: &Option<api::message::tool_call::Tool>,
+) -> Option<(String, String)> {
     use api::message::tool_call::Tool as T;
 
     let tool = tool.as_ref()?;
@@ -552,8 +558,15 @@ fn proto_tool_call_to_openai(tool: &Option<api::message::tool_call::Tool>) -> Op
         ),
         T::Server(s) => {
             if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&s.payload) {
-                let name = parsed.get("name").and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
-                let args_str = parsed.get("arguments").and_then(|v| v.as_str()).unwrap_or("{}");
+                let name = parsed
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+                let args_str = parsed
+                    .get("arguments")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("{}");
                 if serde_json::from_str::<serde_json::Value>(args_str).is_err() {
                     log::warn!("Custom endpoint: skipping tool call with invalid JSON arguments in stored message (name={name})");
                     return None;
@@ -565,74 +578,108 @@ fn proto_tool_call_to_openai(tool: &Option<api::message::tool_call::Tool>) -> Op
         }
         _ => return None,
     };
-    Some((name.to_string(), serde_json::to_string(&args).unwrap_or_default()))
+    Some((
+        name.to_string(),
+        serde_json::to_string(&args).unwrap_or_default(),
+    ))
 }
 
 fn format_tool_call_result(tcr: &api::message::ToolCallResult) -> String {
-    use api::message::tool_call_result::Result as R;
-    use api::run_shell_command_result::Result as ShellResult;
-    use api::read_files_result::Result as ReadResult;
     use api::apply_file_diffs_result::Result as EditResult;
-    use api::search_codebase_result::Result as SearchResult;
-    use api::grep_result::Result as GrepResult;
     use api::file_glob_v2_result::Result as GlobResult;
+    use api::grep_result::Result as GrepResult;
+    use api::message::tool_call_result::Result as R;
+    use api::read_files_result::Result as ReadResult;
+    use api::run_shell_command_result::Result as ShellResult;
+    use api::search_codebase_result::Result as SearchResult;
 
     match &tcr.result {
         Some(R::RunShellCommand(rsc)) => match &rsc.result {
             Some(ShellResult::CommandFinished(finished)) => {
-                format!("Exit code: {}\nOutput:\n{}", finished.exit_code, finished.output)
+                format!(
+                    "Exit code: {}\nOutput:\n{}",
+                    finished.exit_code, finished.output
+                )
             }
             Some(ShellResult::LongRunningCommandSnapshot(snap)) => {
                 format!("Command still running. Current output:\n{}", snap.output)
             }
             Some(ShellResult::PermissionDenied(_)) => "Command was denied permission.".to_string(),
-            None => format!("Shell command completed (tool_call_id: {})", tcr.tool_call_id),
+            None => format!(
+                "Shell command completed (tool_call_id: {})",
+                tcr.tool_call_id
+            ),
         },
         Some(R::ReadFiles(rf)) => match &rf.result {
-            Some(ReadResult::TextFilesSuccess(s)) => {
-                s.files.iter().map(|f| format!("--- {} ---\n{}", f.file_path, f.content)).collect::<Vec<_>>().join("\n\n")
-            }
-            Some(ReadResult::AnyFilesSuccess(s)) => {
-                s.files.iter().map(|f| {
-                    match &f.content {
-                        Some(api::any_file_content::Content::TextContent(tc)) => format!("--- {} ---\n{}", tc.file_path, tc.content),
-                        Some(api::any_file_content::Content::BinaryContent(bc)) => format!("--- {} --- [binary]", bc.file_path),
-                        None => "[empty]".to_string(),
+            Some(ReadResult::TextFilesSuccess(s)) => s
+                .files
+                .iter()
+                .map(|f| format!("--- {} ---\n{}", f.file_path, f.content))
+                .collect::<Vec<_>>()
+                .join("\n\n"),
+            Some(ReadResult::AnyFilesSuccess(s)) => s
+                .files
+                .iter()
+                .map(|f| match &f.content {
+                    Some(api::any_file_content::Content::TextContent(tc)) => {
+                        format!("--- {} ---\n{}", tc.file_path, tc.content)
                     }
-                }).collect::<Vec<_>>().join("\n\n")
-            }
+                    Some(api::any_file_content::Content::BinaryContent(bc)) => {
+                        format!("--- {} --- [binary]", bc.file_path)
+                    }
+                    None => "[empty]".to_string(),
+                })
+                .collect::<Vec<_>>()
+                .join("\n\n"),
             Some(ReadResult::Error(e)) => format!("Error reading files: {}", e.message),
             None => "Read files completed.".to_string(),
         },
         Some(R::ApplyFileDiffs(afd)) => match &afd.result {
             Some(EditResult::Success(s)) => {
-                let paths: Vec<&str> = s.updated_files.iter().map(|f| f.file_path.as_str()).collect();
+                let paths: Vec<&str> = s
+                    .updated_files
+                    .iter()
+                    .map(|f| f.file_path.as_str())
+                    .collect();
                 format!("File edits applied. Files: {}", paths.join(", "))
             }
             Some(EditResult::Error(e)) => format!("Error applying edits: {}", e.message),
             None => "File edits completed.".to_string(),
         },
         Some(R::SearchCodebase(sc)) => match &sc.result {
-            Some(SearchResult::Success(s)) => {
-                s.files.iter().map(|f| format!("--- {} ---\n{}", f.file_path, f.content)).collect::<Vec<_>>().join("\n\n")
-            }
+            Some(SearchResult::Success(s)) => s
+                .files
+                .iter()
+                .map(|f| format!("--- {} ---\n{}", f.file_path, f.content))
+                .collect::<Vec<_>>()
+                .join("\n\n"),
             Some(SearchResult::Error(e)) => format!("Search failed: {}", e.message),
             None => "Search completed.".to_string(),
         },
         Some(R::Grep(g)) => match &g.result {
-            Some(GrepResult::Success(s)) => {
-                s.matched_files.iter().map(|m| {
-                    let lines: Vec<String> = m.matched_lines.iter().map(|l| format!("line {}", l.line_number)).collect();
+            Some(GrepResult::Success(s)) => s
+                .matched_files
+                .iter()
+                .map(|m| {
+                    let lines: Vec<String> = m
+                        .matched_lines
+                        .iter()
+                        .map(|l| format!("line {}", l.line_number))
+                        .collect();
                     format!("{}: {}", m.file_path, lines.join(", "))
-                }).collect::<Vec<_>>().join("\n")
-            }
+                })
+                .collect::<Vec<_>>()
+                .join("\n"),
             Some(GrepResult::Error(e)) => format!("Grep error: {}", e.message),
             None => "Grep completed.".to_string(),
         },
         Some(R::FileGlobV2(fg)) => match &fg.result {
-            Some(GlobResult::Success(s)) => {
-                s.matched_files.iter().map(|m| m.file_path.clone()).collect::<Vec<_>>().join("\n")
-            }
+            Some(GlobResult::Success(s)) => s
+                .matched_files
+                .iter()
+                .map(|m| m.file_path.clone())
+                .collect::<Vec<_>>()
+                .join("\n"),
             Some(GlobResult::Error(e)) => format!("File glob error: {}", e.message),
             None => "File glob completed.".to_string(),
         },
@@ -667,7 +714,10 @@ pub fn make_create_task_event(task_id: &str) -> api::ResponseEvent {
     }
 }
 
-fn make_add_messages_client_action(message: api::Message, task_id: &str) -> api::response_event::ClientActions {
+fn make_add_messages_client_action(
+    message: api::Message,
+    task_id: &str,
+) -> api::response_event::ClientActions {
     api::response_event::ClientActions {
         actions: vec![api::ClientAction {
             action: Some(api::client_action::Action::AddMessagesToTask(
@@ -680,7 +730,11 @@ fn make_add_messages_client_action(message: api::Message, task_id: &str) -> api:
     }
 }
 
-fn make_text_client_action(text: String, message_id: String, task_id: &str) -> api::response_event::ClientActions {
+fn make_text_client_action(
+    text: String,
+    message_id: String,
+    task_id: &str,
+) -> api::response_event::ClientActions {
     let message = api::Message {
         id: message_id,
         task_id: task_id.to_string(),
@@ -688,14 +742,17 @@ fn make_text_client_action(text: String, message_id: String, task_id: &str) -> a
         timestamp: None,
         server_message_data: String::new(),
         citations: vec![],
-        message: Some(api::message::Message::AgentOutput(api::message::AgentOutput {
-            text,
-        })),
+        message: Some(api::message::Message::AgentOutput(
+            api::message::AgentOutput { text },
+        )),
     };
     make_add_messages_client_action(message, task_id)
 }
 
-pub fn make_user_query_client_action(query: String, task_id: &str) -> api::response_event::ClientActions {
+pub fn make_user_query_client_action(
+    query: String,
+    task_id: &str,
+) -> api::response_event::ClientActions {
     let message = api::Message {
         id: uuid::Uuid::new_v4().to_string(),
         task_id: task_id.to_string(),
@@ -714,7 +771,11 @@ pub fn make_user_query_client_action(query: String, task_id: &str) -> api::respo
     make_add_messages_client_action(message, task_id)
 }
 
-fn make_append_text_client_action(text: String, message_id: String, task_id: &str) -> api::response_event::ClientActions {
+fn make_append_text_client_action(
+    text: String,
+    message_id: String,
+    task_id: &str,
+) -> api::response_event::ClientActions {
     let message = api::Message {
         id: message_id.clone(),
         task_id: task_id.to_string(),
@@ -722,9 +783,9 @@ fn make_append_text_client_action(text: String, message_id: String, task_id: &st
         timestamp: None,
         server_message_data: String::new(),
         citations: vec![],
-        message: Some(api::message::Message::AgentOutput(api::message::AgentOutput {
-            text,
-        })),
+        message: Some(api::message::Message::AgentOutput(
+            api::message::AgentOutput { text },
+        )),
     };
     api::response_event::ClientActions {
         actions: vec![api::ClientAction {
@@ -812,16 +873,15 @@ pub fn delta_to_response_events(
     }
 
     if events.is_empty() {
-        log::debug!("Custom endpoint delta produced 0 events (likely role-only or empty content chunk)");
+        log::debug!(
+            "Custom endpoint delta produced 0 events (likely role-only or empty content chunk)"
+        );
     }
 
     events
 }
 
-pub fn finalize_tool_call_events(
-    tool_calls: Vec<OpenAiToolCall>,
-    task_id: &str,
-) -> Vec<Event> {
+pub fn finalize_tool_call_events(tool_calls: Vec<OpenAiToolCall>, task_id: &str) -> Vec<Event> {
     if tool_calls.is_empty() {
         return vec![];
     }
@@ -831,7 +891,11 @@ pub fn finalize_tool_call_events(
         let action_type = match openai_tool_call_to_action(tc) {
             Ok(a) => a,
             Err(e) => {
-                log::warn!("Failed to convert tool call '{}' to action: {}", tc.function.name, e);
+                log::warn!(
+                    "Failed to convert tool call '{}' to action: {}",
+                    tc.function.name,
+                    e
+                );
                 let available: String = get_tool_definitions()
                     .iter()
                     .map(|t| t.function.name.as_str())
@@ -842,15 +906,17 @@ pub fn finalize_tool_call_events(
                      Please retry with a valid tool name and correct JSON arguments.",
                     tc.function.name, e, available
                 );
-                let sanitized_args = serde_json::from_str::<serde_json::Value>(&tc.function.arguments)
-                    .ok()
-                    .map(|v| v.to_string())
-                    .unwrap_or_else(|| serde_json::json!({}).to_string());
+                let sanitized_args =
+                    serde_json::from_str::<serde_json::Value>(&tc.function.arguments)
+                        .ok()
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| serde_json::json!({}).to_string());
                 let payload = serde_json::json!({
                     "name": tc.function.name,
                     "arguments": sanitized_args,
                     "error": e,
-                }).to_string();
+                })
+                .to_string();
                 let visible_id = format!("{}_visible", tc.id);
                 actions.push(api::ClientAction {
                     action: Some(api::client_action::Action::AddMessagesToTask(
@@ -868,9 +934,7 @@ pub fn finalize_tool_call_events(
                                         api::message::ToolCall {
                                             tool_call_id: tc.id.clone(),
                                             tool: Some(api::message::tool_call::Tool::Server(
-                                                api::message::tool_call::Server {
-                                                    payload,
-                                                },
+                                                api::message::tool_call::Server { payload },
                                             )),
                                         },
                                     )),
@@ -905,7 +969,10 @@ pub fn finalize_tool_call_events(
                                     citations: vec![],
                                     message: Some(api::message::Message::AgentOutput(
                                         api::message::AgentOutput {
-                                            text: format!("AI made an unknown tool call: '{}'", tc.function.name),
+                                            text: format!(
+                                                "AI made an unknown tool call: '{}'",
+                                                tc.function.name
+                                            ),
                                         },
                                     )),
                                 },
@@ -937,20 +1004,28 @@ pub fn finalize_tool_call_events(
         });
     }
 
-    actions.into_iter().map(|action| {
-        Ok(api::ResponseEvent {
-            r#type: Some(api::response_event::Type::ClientActions(
-                api::response_event::ClientActions { actions: vec![action] },
-            )),
+    actions
+        .into_iter()
+        .map(|action| {
+            Ok(api::ResponseEvent {
+                r#type: Some(api::response_event::Type::ClientActions(
+                    api::response_event::ClientActions {
+                        actions: vec![action],
+                    },
+                )),
+            })
         })
-    }).collect()
+        .collect()
 }
 
-fn openai_tool_call_to_action(tc: &OpenAiToolCall) -> Result<api::message::tool_call::Tool, String> {
+fn openai_tool_call_to_action(
+    tc: &OpenAiToolCall,
+) -> Result<api::message::tool_call::Tool, String> {
     let args: serde_json::Value = if tc.function.arguments.is_empty() {
         serde_json::Value::Object(serde_json::Map::new())
     } else {
-        serde_json::from_str(&tc.function.arguments).map_err(|e| format!("Invalid JSON arguments: {e}"))?
+        serde_json::from_str(&tc.function.arguments)
+            .map_err(|e| format!("Invalid JSON arguments: {e}"))?
     };
 
     match tc.function.name.as_str() {
@@ -1077,90 +1152,135 @@ fn openai_tool_call_to_action(tc: &OpenAiToolCall) -> Result<api::message::tool_
 
 pub fn format_action_result(result: &AIAgentActionResultType) -> String {
     match result {
-        AIAgentActionResultType::RequestCommandOutput(cmd_result) => {
-            match cmd_result {
-                ai::agent::action_result::RequestCommandOutputResult::Completed { output, exit_code, .. } => {
-                    format!("Exit code: {}\nOutput:\n{}", exit_code, output)
-                }
-                ai::agent::action_result::RequestCommandOutputResult::LongRunningCommandSnapshot { grid_contents, .. } => {
-                    format!("Command is still running. Current output:\n{}", grid_contents)
-                }
-                ai::agent::action_result::RequestCommandOutputResult::CancelledBeforeExecution => {
-                    "Command was cancelled before execution.".to_string()
-                }
-                ai::agent::action_result::RequestCommandOutputResult::Denylisted { command } => {
-                    format!("Command '{}' was denied.", command)
-                }
+        AIAgentActionResultType::RequestCommandOutput(cmd_result) => match cmd_result {
+            ai::agent::action_result::RequestCommandOutputResult::Completed {
+                output,
+                exit_code,
+                ..
+            } => {
+                format!("Exit code: {}\nOutput:\n{}", exit_code, output)
             }
-        }
-        AIAgentActionResultType::ReadFiles(read_result) => {
-            match read_result {
-                ai::agent::action_result::ReadFilesResult::Success { files } => {
-                    files.iter().map(|f| {
-                        let content = match &f.content {
-                            ai::agent::action_result::AnyFileContent::StringContent(s) => s.clone(),
-                            ai::agent::action_result::AnyFileContent::BinaryContent(_) => "[binary content]".to_string(),
-                        };
-                        format!("--- {} ---\n{}", f.file_name, content)
-                    }).collect::<Vec<_>>().join("\n\n")
-                }
-                ai::agent::action_result::ReadFilesResult::Error(e) => format!("Error reading files: {}", e),
-                ai::agent::action_result::ReadFilesResult::Cancelled => "Read files was cancelled.".to_string(),
+            ai::agent::action_result::RequestCommandOutputResult::LongRunningCommandSnapshot {
+                grid_contents,
+                ..
+            } => {
+                format!(
+                    "Command is still running. Current output:\n{}",
+                    grid_contents
+                )
             }
-        }
-        AIAgentActionResultType::RequestFileEdits(edit_result) => {
-            match edit_result {
-                ai::agent::action_result::RequestFileEditsResult::Success { diff, updated_files, .. } => {
-                    let paths: Vec<String> = updated_files.iter().map(|u| u.file_context.file_name.clone()).collect();
-                    format!("File edits applied successfully. Files: {}. Diff:\n{}", paths.join(", "), diff)
-                }
-                ai::agent::action_result::RequestFileEditsResult::Cancelled => "File edits were cancelled.".to_string(),
-                ai::agent::action_result::RequestFileEditsResult::DiffApplicationFailed { error } => format!("Error applying file edits: {}", error),
+            ai::agent::action_result::RequestCommandOutputResult::CancelledBeforeExecution => {
+                "Command was cancelled before execution.".to_string()
             }
-        }
-        AIAgentActionResultType::SearchCodebase(search_result) => {
-            match search_result {
-                ai::agent::action_result::SearchCodebaseResult::Success { files } => {
-                    files.iter().map(|f| {
-                        let content = match &f.content {
-                            ai::agent::action_result::AnyFileContent::StringContent(s) => s.clone(),
-                            ai::agent::action_result::AnyFileContent::BinaryContent(_) => "[binary content]".to_string(),
-                        };
-                        format!("--- {} ---\n{}", f.file_name, content)
-                    }).collect::<Vec<_>>().join("\n\n")
-                }
-                ai::agent::action_result::SearchCodebaseResult::Failed { message, .. } => format!("Search failed: {}", message),
-                ai::agent::action_result::SearchCodebaseResult::Cancelled => "Search was cancelled.".to_string(),
+            ai::agent::action_result::RequestCommandOutputResult::Denylisted { command } => {
+                format!("Command '{}' was denied.", command)
             }
-        }
-        AIAgentActionResultType::Grep(grep_result) => {
-            match grep_result {
-                ai::agent::action_result::GrepResult::Success { matched_files } => {
-                    matched_files.iter().map(|m| {
-                        let lines: Vec<String> = m.matched_lines.iter().map(|l| format!("line {}", l.line_number)).collect();
-                        format!("{}: {}", m.file_path, lines.join(", "))
-                    }).collect::<Vec<_>>().join("\n")
-                }
-                ai::agent::action_result::GrepResult::Error(e) => format!("Grep error: {}", e),
-                ai::agent::action_result::GrepResult::Cancelled => "Grep was cancelled.".to_string(),
+        },
+        AIAgentActionResultType::ReadFiles(read_result) => match read_result {
+            ai::agent::action_result::ReadFilesResult::Success { files } => files
+                .iter()
+                .map(|f| {
+                    let content = match &f.content {
+                        ai::agent::action_result::AnyFileContent::StringContent(s) => s.clone(),
+                        ai::agent::action_result::AnyFileContent::BinaryContent(_) => {
+                            "[binary content]".to_string()
+                        }
+                    };
+                    format!("--- {} ---\n{}", f.file_name, content)
+                })
+                .collect::<Vec<_>>()
+                .join("\n\n"),
+            ai::agent::action_result::ReadFilesResult::Error(e) => {
+                format!("Error reading files: {}", e)
             }
-        }
-        AIAgentActionResultType::FileGlob(glob_result) => {
-            match glob_result {
-                ai::agent::action_result::FileGlobResult::Success { matched_files } => matched_files.clone(),
-                ai::agent::action_result::FileGlobResult::Error(e) => format!("File glob error: {}", e),
-                ai::agent::action_result::FileGlobResult::Cancelled => "File glob was cancelled.".to_string(),
+            ai::agent::action_result::ReadFilesResult::Cancelled => {
+                "Read files was cancelled.".to_string()
             }
-        }
-        AIAgentActionResultType::FileGlobV2(glob_result) => {
-            match glob_result {
-                ai::agent::action_result::FileGlobV2Result::Success { matched_files, .. } => {
-                    matched_files.iter().map(|m| m.file_path.clone()).collect::<Vec<_>>().join("\n")
-                }
-                ai::agent::action_result::FileGlobV2Result::Error(e) => format!("File glob error: {}", e),
-                ai::agent::action_result::FileGlobV2Result::Cancelled => "File glob was cancelled.".to_string(),
+        },
+        AIAgentActionResultType::RequestFileEdits(edit_result) => match edit_result {
+            ai::agent::action_result::RequestFileEditsResult::Success {
+                diff,
+                updated_files,
+                ..
+            } => {
+                let paths: Vec<String> = updated_files
+                    .iter()
+                    .map(|u| u.file_context.file_name.clone())
+                    .collect();
+                format!(
+                    "File edits applied successfully. Files: {}. Diff:\n{}",
+                    paths.join(", "),
+                    diff
+                )
             }
-        }
+            ai::agent::action_result::RequestFileEditsResult::Cancelled => {
+                "File edits were cancelled.".to_string()
+            }
+            ai::agent::action_result::RequestFileEditsResult::DiffApplicationFailed { error } => {
+                format!("Error applying file edits: {}", error)
+            }
+        },
+        AIAgentActionResultType::SearchCodebase(search_result) => match search_result {
+            ai::agent::action_result::SearchCodebaseResult::Success { files } => files
+                .iter()
+                .map(|f| {
+                    let content = match &f.content {
+                        ai::agent::action_result::AnyFileContent::StringContent(s) => s.clone(),
+                        ai::agent::action_result::AnyFileContent::BinaryContent(_) => {
+                            "[binary content]".to_string()
+                        }
+                    };
+                    format!("--- {} ---\n{}", f.file_name, content)
+                })
+                .collect::<Vec<_>>()
+                .join("\n\n"),
+            ai::agent::action_result::SearchCodebaseResult::Failed { message, .. } => {
+                format!("Search failed: {}", message)
+            }
+            ai::agent::action_result::SearchCodebaseResult::Cancelled => {
+                "Search was cancelled.".to_string()
+            }
+        },
+        AIAgentActionResultType::Grep(grep_result) => match grep_result {
+            ai::agent::action_result::GrepResult::Success { matched_files } => matched_files
+                .iter()
+                .map(|m| {
+                    let lines: Vec<String> = m
+                        .matched_lines
+                        .iter()
+                        .map(|l| format!("line {}", l.line_number))
+                        .collect();
+                    format!("{}: {}", m.file_path, lines.join(", "))
+                })
+                .collect::<Vec<_>>()
+                .join("\n"),
+            ai::agent::action_result::GrepResult::Error(e) => format!("Grep error: {}", e),
+            ai::agent::action_result::GrepResult::Cancelled => "Grep was cancelled.".to_string(),
+        },
+        AIAgentActionResultType::FileGlob(glob_result) => match glob_result {
+            ai::agent::action_result::FileGlobResult::Success { matched_files } => {
+                matched_files.clone()
+            }
+            ai::agent::action_result::FileGlobResult::Error(e) => format!("File glob error: {}", e),
+            ai::agent::action_result::FileGlobResult::Cancelled => {
+                "File glob was cancelled.".to_string()
+            }
+        },
+        AIAgentActionResultType::FileGlobV2(glob_result) => match glob_result {
+            ai::agent::action_result::FileGlobV2Result::Success { matched_files, .. } => {
+                matched_files
+                    .iter()
+                    .map(|m| m.file_path.clone())
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            }
+            ai::agent::action_result::FileGlobV2Result::Error(e) => {
+                format!("File glob error: {}", e)
+            }
+            ai::agent::action_result::FileGlobV2Result::Cancelled => {
+                "File glob was cancelled.".to_string()
+            }
+        },
         _ => format!("{}", result),
     }
 }

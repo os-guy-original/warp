@@ -36,5 +36,8 @@ fn filename_component_escapes_windows_reserved_characters() {
         "CustomEndpoint%3Aendpoint-1%3Aapi_key"
     );
     assert_eq!(SecureStorage::filename_component("User"), "User");
-    assert_eq!(SecureStorage::filename_component("literal%3A"), "literal%253A");
+    assert_eq!(
+        SecureStorage::filename_component("literal%3A"),
+        "literal%253A"
+    );
 }

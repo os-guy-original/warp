@@ -246,13 +246,20 @@ impl ResponseStream {
                                     init_event.request_id.clone(),
                                 ));
                         }
-                        warp_multi_agent_api::response_event::Type::ClientActions(client_actions) => {
-                            let has_content_bearing_actions = client_actions.actions.iter().any(|action| {
-                                !matches!(
-                                    action.action,
-                                    Some(warp_multi_agent_api::client_action::Action::CreateTask(_))
-                                )
-                            });
+                        warp_multi_agent_api::response_event::Type::ClientActions(
+                            client_actions,
+                        ) => {
+                            let has_content_bearing_actions =
+                                client_actions.actions.iter().any(|action| {
+                                    !matches!(
+                                        action.action,
+                                        Some(
+                                            warp_multi_agent_api::client_action::Action::CreateTask(
+                                                _
+                                            )
+                                        )
+                                    )
+                                });
                             if has_content_bearing_actions {
                                 self.has_received_client_actions = true;
                             }

@@ -669,28 +669,28 @@ impl LLMPreferences {
 
         let base_llm_for_terminal_view = HashMap::new();
 
-    let me = Self {
-        models_by_feature,
-        last_update: None,
-        base_llm_for_terminal_view,
-    };
+        let me = Self {
+            models_by_feature,
+            last_update: None,
+            base_llm_for_terminal_view,
+        };
 
-    // Inject custom endpoint models at init from cached AI settings
-    #[cfg(not(target_family = "wasm"))]
-    let mut me = me;
-    #[cfg(not(target_family = "wasm"))]
-    me.inject_custom_endpoint_models(ctx);
-    #[cfg(target_family = "wasm")]
-    let me = me;
+        // Inject custom endpoint models at init from cached AI settings
+        #[cfg(not(target_family = "wasm"))]
+        let mut me = me;
+        #[cfg(not(target_family = "wasm"))]
+        me.inject_custom_endpoint_models(ctx);
+        #[cfg(target_family = "wasm")]
+        let me = me;
 
-    // In agent mode eval builds, eagerly kick off a fetch of the model list from the server
-    // so that it's available by the time test steps like `set_preferred_agent_mode_llm` run.
-    // In production, this is handled reactively (on auth complete, network online, etc.)
-    // to avoid duplicate requests at startup.
-    #[cfg(feature = "agent_mode_evals")]
-    me.refresh_available_models(ctx);
+        // In agent mode eval builds, eagerly kick off a fetch of the model list from the server
+        // so that it's available by the time test steps like `set_preferred_agent_mode_llm` run.
+        // In production, this is handled reactively (on auth complete, network online, etc.)
+        // to avoid duplicate requests at startup.
+        #[cfg(feature = "agent_mode_evals")]
+        me.refresh_available_models(ctx);
 
-    me
+        me
     }
 
     /// Returns the `LLMInfo` for the base LLM to be used for an Agent Mode request.
@@ -1049,14 +1049,14 @@ impl LLMPreferences {
     fn on_server_update(&mut self, update: ModelsByFeature, ctx: &mut ModelContext<Self>) {
         let has_existing_persisted_config = get_cached_models(ctx).is_some();
 
-    let old = std::mem::replace(&mut self.models_by_feature, update);
+        let old = std::mem::replace(&mut self.models_by_feature, update);
 
-    // Inject custom endpoint models BEFORE the clearing loop below so that
-    // custom model selections are not incorrectly treated as "no longer supported".
-    #[cfg(not(target_family = "wasm"))]
-    self.inject_custom_endpoint_models(ctx);
+        // Inject custom endpoint models BEFORE the clearing loop below so that
+        // custom model selections are not incorrectly treated as "no longer supported".
+        #[cfg(not(target_family = "wasm"))]
+        self.inject_custom_endpoint_models(ctx);
 
-    match serde_json::to_string(&self.models_by_feature) {
+        match serde_json::to_string(&self.models_by_feature) {
             Ok(serialized_update) => {
                 if let Err(e) = ctx
                     .private_user_preferences()
@@ -1082,13 +1082,13 @@ impl LLMPreferences {
                     if has_existing_persisted_config {
                         UpdatePopupVisibilityState::WaitingToBeShown
                     } else {
-                UpdatePopupVisibilityState::Hidden
-            }
-        )),
+                        UpdatePopupVisibilityState::Hidden
+                    },
+                )),
             });
         }
 
-    ctx.emit(LLMPreferencesEvent::UpdatedAvailableLLMs);
+        ctx.emit(LLMPreferencesEvent::UpdatedAvailableLLMs);
     }
 
     /// Inject custom OpenAI-compatible endpoint models into the model lists.
@@ -1105,13 +1105,23 @@ impl LLMPreferences {
 
         // Remove all existing custom endpoint models first
         let prefix = ai::openai_compatible::OpenAiCompatibleEndpoint::ID_PREFIX;
-        self.models_by_feature.agent_mode.choices.retain(|m| !m.id.as_str().starts_with(prefix));
-        self.models_by_feature.coding.choices.retain(|m| !m.id.as_str().starts_with(prefix));
+        self.models_by_feature
+            .agent_mode
+            .choices
+            .retain(|m| !m.id.as_str().starts_with(prefix));
+        self.models_by_feature
+            .coding
+            .choices
+            .retain(|m| !m.id.as_str().starts_with(prefix));
         if let Some(ref mut cli_agent) = self.models_by_feature.cli_agent {
-            cli_agent.choices.retain(|m| !m.id.as_str().starts_with(prefix));
+            cli_agent
+                .choices
+                .retain(|m| !m.id.as_str().starts_with(prefix));
         }
         if let Some(ref mut computer_use) = self.models_by_feature.computer_use {
-            computer_use.choices.retain(|m| !m.id.as_str().starts_with(prefix));
+            computer_use
+                .choices
+                .retain(|m| !m.id.as_str().starts_with(prefix));
         }
 
         // Inject enabled custom endpoint models

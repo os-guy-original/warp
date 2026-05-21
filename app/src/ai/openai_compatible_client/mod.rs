@@ -15,7 +15,7 @@ use crate::server::server_api::AIApiError;
 
 use convert::{OpenAiChatRequest, OpenAiChatStreamDelta, StreamingState};
 
-pub use convert::{OpenAiCompatibleRequest, from_request_params};
+pub use convert::{from_request_params, OpenAiCompatibleRequest};
 
 #[derive(Debug, thiserror::Error)]
 pub enum OpenAiCompatibleError {
@@ -37,7 +37,8 @@ pub async fn generate_openai_compatible_output(
 ) -> Result<ResponseStream, OpenAiCompatibleError> {
     let url = endpoint.chat_completions_url();
     let request_conversation_id = request.conversation_id.clone();
-    let chat_request = OpenAiChatRequest::from_request(request.clone(), &endpoint.models[0].model_id);
+    let chat_request =
+        OpenAiChatRequest::from_request(request.clone(), &endpoint.models[0].model_id);
 
     log::info!(
         "Custom endpoint request: url={}, model={}, messages={}, stream={}, tools={}",
@@ -60,7 +61,8 @@ pub async fn generate_openai_compatible_output(
     }
 
     let task_id = request.task_id.clone();
-    let conversation_id = request_conversation_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    let conversation_id =
+        request_conversation_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     let request_id = uuid::Uuid::new_v4().to_string();
     let run_id = String::new();
 
@@ -84,8 +86,7 @@ pub async fn generate_openai_compatible_output(
     });
     let streaming_state = Arc::new(Mutex::new(StreamingState::new()));
 
-    let event_source = request_builder
-        .eventsource();
+    let event_source = request_builder.eventsource();
 
     let cid_for_log = conversation_id.clone();
     let output_stream = event_source
@@ -112,25 +113,30 @@ pub async fn generate_openai_compatible_output(
                             }
                         }
 
-                        let mut finish_events = tool_call_events;
-                        finish_events.push(Ok(warp_multi_agent_api::ResponseEvent {
-                            r#type: Some(
-                                warp_multi_agent_api::response_event::Type::Finished(
-                                    warp_multi_agent_api::response_event::StreamFinished {
-                                        token_usage: vec![],
-                                        should_refresh_model_config: false,
-                                        request_cost: None,
-                                        conversation_usage_metadata: None,
-                                        reason: Some(
-                                            warp_multi_agent_api::response_event::stream_finished::Reason::Done(
-                                                warp_multi_agent_api::response_event::stream_finished::Done {},
+                        if tool_call_events.is_empty() {
+                            vec![Ok(warp_multi_agent_api::ResponseEvent {
+                                r#type: Some(
+                                    warp_multi_agent_api::response_event::Type::Finished(
+                                        warp_multi_agent_api::response_event::StreamFinished {
+                                            token_usage: vec![],
+                                            should_refresh_model_config: false,
+                                            request_cost: None,
+                                            conversation_usage_metadata: None,
+                                            reason: Some(
+                                                warp_multi_agent_api::response_event::stream_finished::Reason::Done(
+                                                    warp_multi_agent_api::response_event::stream_finished::Done {},
+                                                ),
                                             ),
-                                        ),
-                                    },
+                                        },
+                                    ),
                                 ),
-                            ),
-                        }));
-                        finish_events
+                            })]
+                        } else {
+                            log::debug!(
+                                "Custom endpoint: emitted tool calls without Finished so the action loop can resume"
+                            );
+                            tool_call_events
+                        }
                     } else {
                         match serde_json::from_str::<OpenAiChatStreamDelta>(&data) {
                             Ok(delta) => {

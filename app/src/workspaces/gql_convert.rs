@@ -657,17 +657,15 @@ impl From<warp_graphql::workspace::LlmModelHost> for crate::ai::llms::LLMModelHo
         match gql_host {
             GqlLlmModelHost::DirectApi => Self::DirectApi,
             GqlLlmModelHost::AwsBedrock => Self::AwsBedrock,
-            GqlLlmModelHost::Other(value) => {
-                match value.as_str() {
-                    "OPENAI_COMPATIBLE" | "OpenAiCompatible" => Self::OpenAiCompatible,
-                    _ => {
-                        report_error!(anyhow!(
-                            "Unknown LlmModelHost '{value}'. Make sure to update client GraphQL types!"
-                        ));
-                        Self::Unknown
-                    }
+            GqlLlmModelHost::Other(value) => match value.as_str() {
+                "OPENAI_COMPATIBLE" | "OpenAiCompatible" => Self::OpenAiCompatible,
+                _ => {
+                    report_error!(anyhow!(
+                        "Unknown LlmModelHost '{value}'. Make sure to update client GraphQL types!"
+                    ));
+                    Self::Unknown
                 }
-            }
+            },
         }
     }
 }

@@ -131,6 +131,8 @@ const FAST_FORWARD_OFF_TOOLTIP: &str = "Auto-approve all agent actions for this 
 
 const START_REMOTE_CONTROL_TOOLTIP: &str = "Start remote control";
 const START_REMOTE_CONTROL_LOGIN_REQUIRED_TOOLTIP: &str = "Log in to use /remote-control";
+const QUICK_COMMAND_MAX_LABEL_CHARS: usize = 24;
+const QUICK_COMMAND_FONT_SIZE: f32 = 12.;
 
 const CLOUD_MODE_V2_FOOTER_GAP: f32 = 4.;
 
@@ -665,7 +667,11 @@ impl AgentInputFooter {
             ctx.notify()
         });
         ctx.subscribe_to_model(&AISettings::handle(ctx), |_, _, event, ctx| {
-            if let AISettingsChangedEvent::AIAutoDetectionEnabled { .. } = event {
+            if matches!(
+                event,
+                AISettingsChangedEvent::AIAutoDetectionEnabled { .. }
+                    | AISettingsChangedEvent::QuickAgentCommands { .. }
+            ) {
                 ctx.notify()
             }
         });
@@ -1989,6 +1995,59 @@ impl AgentInputFooter {
         }
     }
 
+    fn render_quick_command_button(
+        command: &crate::settings::AgentQuickCommand,
+        app: &AppContext,
+    ) -> Option<Box<dyn Element>> {
+        if !command.is_usable() {
+            return None;
+        }
+
+        let command_text = command.command_text().to_string();
+        let label = truncated_quick_command_label(command.display_label());
+        let appearance = Appearance::as_ref(app);
+        let theme = appearance.theme();
+        let text = Text::new_inline(label, appearance.ui_font_family(), QUICK_COMMAND_FONT_SIZE)
+            .with_color(theme.active_ui_text_color().into())
+            .finish();
+        let content = Flex::row()
+            .with_main_axis_size(MainAxisSize::Min)
+            .with_cross_axis_alignment(CrossAxisAlignment::Center)
+            .with_spacing(4.)
+            .with_child(
+                ConstrainedBox::new(
+                    Icon::Lightning
+                        .to_warpui_icon(theme.active_ui_text_color())
+                        .finish(),
+                )
+                .with_width(14.)
+                .with_height(14.)
+                .finish(),
+            )
+            .with_child(text)
+            .finish();
+        let button = Container::new(content)
+            .with_padding_top(4.)
+            .with_padding_bottom(4.)
+            .with_padding_left(8.)
+            .with_padding_right(8.)
+            .with_background(theme.surface_2())
+            .with_border(Border::all(1.).with_border_fill(theme.outline()))
+            .with_corner_radius(CornerRadius::with_all(Radius::Pixels(6.)))
+            .finish();
+
+        Some(
+            EventHandler::new(button)
+                .on_left_mouse_down(move |ctx, _, _| {
+                    ctx.dispatch_typed_action(AgentInputFooterAction::SubmitQuickCommand(
+                        command_text.clone(),
+                    ));
+                    DispatchEventResult::StopPropagation
+                })
+                .finish(),
+        )
+    }
+
     #[cfg(test)]
     pub fn displayed_chip_kinds(
         &self,
@@ -2092,11 +2151,24 @@ impl View for AgentInputFooter {
             }
         }
 
+        let mut quick_commands = Wrap::row()
+            .with_main_axis_size(MainAxisSize::Min)
+            .with_cross_axis_alignment(CrossAxisAlignment::Center)
+            .with_main_axis_alignment(MainAxisAlignment::Start)
+            .with_run_spacing(4.)
+            .with_spacing(4.);
+        for command in AISettings::as_ref(app).quick_agent_commands.iter() {
+            if let Some(element) = Self::render_quick_command_button(command, app) {
+                quick_commands.add_child(element);
+            }
+        }
+
         let content = Wrap::row()
             .with_main_axis_size(MainAxisSize::Max)
             .with_main_axis_alignment(MainAxisAlignment::SpaceBetween)
             .with_cross_axis_alignment(CrossAxisAlignment::Center)
             .with_child(WrapFill::new(0., left_buttons.finish()).finish())
+            .with_child(WrapFill::new(1., quick_commands.finish()).finish())
             .with_child(WrapFill::new(0., right_buttons.finish()).finish())
             .with_run_spacing(context_chips::spacing::UDI_ROW_RUN_SPACING)
             .finish();
@@ -2244,6 +2316,7 @@ pub enum AgentInputFooterAction {
     DismissPluginChip,
     StartRemoteControl,
     StopRemoteControl,
+    SubmitQuickCommand(String),
     OpenCodingAgentSettings,
     /// Open the local-to-cloud handoff pane. Dispatched by the
     /// "Hand off to cloud" footer chip.
@@ -2437,6 +2510,9 @@ impl TypedActionView for AgentInputFooter {
             AgentInputFooterAction::StopRemoteControl => {
                 ctx.emit(AgentInputFooterEvent::StopRemoteControl);
             }
+            AgentInputFooterAction::SubmitQuickCommand(command) => {
+                ctx.emit(AgentInputFooterEvent::SubmitQuickCommand(command.clone()));
+            }
             AgentInputFooterAction::OpenCodingAgentSettings => {
                 #[cfg(not(target_family = "wasm"))]
                 ctx.dispatch_typed_action_deferred(WorkspaceAction::ScrollToSettingsWidget {
@@ -2471,6 +2547,7 @@ pub enum AgentInputFooterEvent {
     ToggleFileExplorer(CLIAgent),
     StartRemoteControl,
     StopRemoteControl,
+    SubmitQuickCommand(String),
     OpenRichInput,
     HideRichInput,
     ToggledChipMenu {
@@ -2506,6 +2583,17 @@ pub enum AgentInputFooterEvent {
 
 impl Entity for AgentInputFooter {
     type Event = AgentInputFooterEvent;
+}
+
+fn truncated_quick_command_label(label: &str) -> String {
+    let label = label.trim();
+    let mut chars = label.chars();
+    let truncated: String = chars.by_ref().take(QUICK_COMMAND_MAX_LABEL_CHARS).collect();
+    if chars.next().is_some() {
+        format!("{truncated}...")
+    } else {
+        truncated
+    }
 }
 
 pub(crate) struct AgentInputButtonTheme;
