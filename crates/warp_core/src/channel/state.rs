@@ -355,6 +355,10 @@ impl ChannelState {
             .unwrap_or_default()
     }
 
+    pub fn is_autoupdate_available() -> bool {
+        CHANNEL_STATE.lock().config.autoupdate_config.is_some()
+    }
+
     /// Returns the MCP OAuth provider config matching the given client ID, if any.
     pub fn mcp_oauth_provider_by_client_id(client_id: &str) -> Option<McpOAuthProviderConfig> {
         CHANNEL_STATE

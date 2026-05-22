@@ -130,6 +130,7 @@ impl AutoupdateState {
             let state_handle = WindowManager::handle(ctx);
             let mut me = Self::new(server_api);
             if FeatureFlag::Autoupdate.is_enabled()
+                && ChannelState::is_autoupdate_available()
                 && AppExecutionMode::as_ref(ctx).can_autoupdate()
             {
                 // Initiate the polling loop

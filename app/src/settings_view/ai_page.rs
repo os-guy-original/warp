@@ -1514,7 +1514,7 @@ impl AISettingsPageView {
                 #[cfg(not(target_family = "wasm"))]
                 {
                     let flag_enabled = FeatureFlag::OpenAiCompatibleEndpoints.is_enabled();
-                    log::warn!("OpenAiCompatibleEndpoints flag enabled: {flag_enabled}");
+                    log::debug!("OpenAiCompatibleEndpoints flag enabled: {flag_enabled}");
                     if flag_enabled {
                         widgets.push(Box::new(OpenAiCompatibleWidget::new(ctx)));
                     }
@@ -1563,7 +1563,7 @@ impl AISettingsPageView {
                 #[cfg(not(target_family = "wasm"))]
                 {
                     let flag_enabled = FeatureFlag::OpenAiCompatibleEndpoints.is_enabled();
-                    log::warn!("OpenAiCompatibleEndpoints flag enabled: {flag_enabled}");
+                    log::debug!("OpenAiCompatibleEndpoints flag enabled: {flag_enabled}");
                     if flag_enabled {
                         widgets.push(Box::new(OpenAiCompatibleWidget::new(ctx)));
                     }
