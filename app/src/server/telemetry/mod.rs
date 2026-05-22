@@ -252,6 +252,7 @@ impl TelemetryApi {
 
             if !(ChannelState::is_release_bundle()
                 || FeatureFlag::WithSandboxTelemetry.is_enabled())
+                || !ChannelState::is_telemetry_available()
             {
                 return Result::Ok(());
             }
@@ -311,6 +312,10 @@ impl TelemetryApi {
 
         if settings_snapshot.should_disable_telemetry() {
             log::info!("Not sending batched messages because telemetry is disabled.");
+            return Ok(());
+        }
+        if !ChannelState::is_telemetry_available() {
+            log::debug!("Not sending batched messages because telemetry is unavailable.");
             return Ok(());
         }
 

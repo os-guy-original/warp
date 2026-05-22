@@ -2424,7 +2424,9 @@ impl From<warp_graphql::queries::get_feature_model_choices::LlmModelHost> for LL
             }
             warp_graphql::queries::get_feature_model_choices::LlmModelHost::Other(value) => {
                 match value.as_str() {
-                    "OPENAI_COMPATIBLE" | "OpenAiCompatible" => LLMModelHost::OpenAiCompatible,
+                    "OPENAI_COMPATIBLE" | "CUSTOM_ENDPOINT" | "OpenAiCompatible" => {
+                        LLMModelHost::OpenAiCompatible
+                    }
                     _ => {
                         report_error!(anyhow!(
                             "Unknown LlmModelHost '{value}'. Make sure to update client GraphQL types!"
@@ -2457,7 +2459,9 @@ impl From<warp_graphql::queries::get_feature_model_choices::LlmProvider> for LLM
                 match value.as_str() {
                     "OPENROUTER" | "Openrouter" => LLMProvider::Openrouter,
                     "AWS_BEDROCK" | "AwsBedrock" => LLMProvider::AwsBedrock,
-                    "OPENAI_COMPATIBLE" | "OpenAiCompatible" => LLMProvider::OpenAiCompatible,
+                    "OPENAI_COMPATIBLE" | "CUSTOM_ENDPOINT" | "OpenAiCompatible" => {
+                        LLMProvider::OpenAiCompatible
+                    }
                     _ => {
                         report_error!(anyhow!(
                             "Invalid LlmProvider '{value}'. Make sure to update client GraphQL types!"
@@ -2478,19 +2482,19 @@ impl From<warp_graphql::workspace::LlmProvider> for LLMProvider {
             warp_graphql::workspace::LlmProvider::Google => LLMProvider::Google,
             warp_graphql::workspace::LlmProvider::Xai => LLMProvider::Xai,
             warp_graphql::workspace::LlmProvider::Unknown => LLMProvider::Unknown,
-            warp_graphql::workspace::LlmProvider::Other(value) => {
-                match value.as_str() {
-                    "OPENROUTER" | "Openrouter" => LLMProvider::Openrouter,
-                    "AWS_BEDROCK" | "AwsBedrock" => LLMProvider::AwsBedrock,
-                    "OPENAI_COMPATIBLE" | "OpenAiCompatible" => LLMProvider::OpenAiCompatible,
-                    _ => {
-                        report_error!(anyhow!(
-                            "Invalid LlmProvider '{value}'. Make sure to update client GraphQL types!"
-                        ));
-                        LLMProvider::Unknown
-                    }
+            warp_graphql::workspace::LlmProvider::Other(value) => match value.as_str() {
+                "OPENROUTER" | "Openrouter" => LLMProvider::Openrouter,
+                "AWS_BEDROCK" | "AwsBedrock" => LLMProvider::AwsBedrock,
+                "OPENAI_COMPATIBLE" | "CUSTOM_ENDPOINT" | "OpenAiCompatible" => {
+                    LLMProvider::OpenAiCompatible
                 }
-            }
+                _ => {
+                    report_error!(anyhow!(
+                        "Invalid LlmProvider '{value}'. Make sure to update client GraphQL types!"
+                    ));
+                    LLMProvider::Unknown
+                }
+            },
         }
     }
 }

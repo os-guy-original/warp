@@ -69,7 +69,8 @@ impl From<OpenAiCompatibleEndpointHelper> for OpenAiCompatibleEndpoint {
                 alias: String::new(),
             }]
         });
-        let has_api_key = helper.has_api_key || helper.api_key.as_ref().is_some_and(|k| !k.is_empty());
+        let has_api_key =
+            helper.has_api_key || helper.api_key.as_ref().is_some_and(|k| !k.is_empty());
         Self {
             id: helper.id,
             display_name: helper.display_name,
@@ -111,12 +112,8 @@ impl OpenAiCompatibleEndpoint {
         let base = self.base_url.trim_end_matches('/');
         if base.ends_with("/chat/completions") {
             base.to_string()
-        } else if base.ends_with("/v1")
-            || base.ends_with("/v1/")
-            || base.ends_with("/v2")
-            || base.ends_with("/v2/")
-        {
-            format!("{}/chat/completions", base.trim_end_matches('/'))
+        } else if base.rsplit('/').next().is_some_and(is_api_version_segment) {
+            format!("{base}/chat/completions")
         } else {
             format!("{}/v1/chat/completions", base)
         }
@@ -180,3 +177,71 @@ impl OpenAiCompatibleEndpoints {
 }
 
 impl settings_value::SettingsValue for OpenAiCompatibleEndpoints {}
+
+fn is_api_version_segment(segment: &str) -> bool {
+    let Some(rest) = segment.strip_prefix('v') else {
+        return false;
+    };
+
+    let digit_count = rest.chars().take_while(|c| c.is_ascii_digit()).count();
+    digit_count > 0
+        && rest
+            .chars()
+            .skip(digit_count)
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{EndpointModel, OpenAiCompatibleEndpoint};
+
+    fn endpoint(base_url: &str) -> OpenAiCompatibleEndpoint {
+        OpenAiCompatibleEndpoint {
+            id: "endpoint-1".to_string(),
+            display_name: "Test".to_string(),
+            base_url: base_url.to_string(),
+            has_api_key: false,
+            api_key: None,
+            models: vec![EndpointModel {
+                model_id: "model".to_string(),
+                alias: "Model".to_string(),
+            }],
+        }
+    }
+
+    #[test]
+    fn chat_completions_url_preserves_versioned_base_urls() {
+        assert_eq!(
+            endpoint("https://example.com/openai/v2").chat_completions_url(),
+            "https://example.com/openai/v2/chat/completions"
+        );
+        assert_eq!(
+            endpoint("https://api.z.ai/api/coding/paas/v4").chat_completions_url(),
+            "https://api.z.ai/api/coding/paas/v4/chat/completions"
+        );
+        assert_eq!(
+            endpoint("https://example.com/openai/v1beta").chat_completions_url(),
+            "https://example.com/openai/v1beta/chat/completions"
+        );
+        assert_eq!(
+            endpoint("https://example.com/openai/v1alpha").chat_completions_url(),
+            "https://example.com/openai/v1alpha/chat/completions"
+        );
+    }
+
+    #[test]
+    fn chat_completions_url_keeps_full_endpoint_urls() {
+        assert_eq!(
+            endpoint("https://api.z.ai/api/coding/paas/v4/chat/completions").chat_completions_url(),
+            "https://api.z.ai/api/coding/paas/v4/chat/completions"
+        );
+    }
+
+    #[test]
+    fn chat_completions_url_defaults_unversioned_base_urls_to_v1() {
+        assert_eq!(
+            endpoint("https://api.openai.com").chat_completions_url(),
+            "https://api.openai.com/v1/chat/completions"
+        );
+    }
+}

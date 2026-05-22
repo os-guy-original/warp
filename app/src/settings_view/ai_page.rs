@@ -1508,24 +1508,25 @@ impl AISettingsPageView {
                 {
                     widgets.push(Box::new(VoiceWidget::default()));
                 }
-        widgets.push(Box::new(CLIAgentWidget::default()));
-        widgets.push(Box::new(ApiKeysWidget::new(ctx)));
-        widgets.push(Box::new(AwsBedrockWidget::new(ctx)));
-        #[cfg(not(target_family = "wasm"))]
-        {
-            let flag_enabled = FeatureFlag::OpenAiCompatibleEndpoints.is_enabled();
-            log::warn!("OpenAiCompatibleEndpoints flag enabled: {flag_enabled}");
-            if flag_enabled {
-                widgets.push(Box::new(OpenAiCompatibleWidget::new(ctx)));
+                widgets.push(Box::new(CLIAgentWidget::default()));
+                widgets.push(Box::new(ApiKeysWidget::new(ctx)));
+                widgets.push(Box::new(AwsBedrockWidget::new(ctx)));
+                #[cfg(not(target_family = "wasm"))]
+                {
+                    let flag_enabled = FeatureFlag::OpenAiCompatibleEndpoints.is_enabled();
+                    log::debug!("OpenAiCompatibleEndpoints flag enabled: {flag_enabled}");
+                    if flag_enabled {
+                        widgets.push(Box::new(OpenAiCompatibleWidget::new(ctx)));
+                    }
+                }
+                widgets.push(Box::new(QuickAgentCommandsWidget::new(ctx)));
+                widgets.push(Box::new(AgentAttributionWidget::default()));
+                widgets.push(Box::new(OtherAIWidget::default()));
+                if FeatureFlag::AgentModeComputerUse.is_enabled() {
+                    widgets.push(Box::new(CloudAgentComputerUseWidget::default()));
+                }
             }
-        }
-        widgets.push(Box::new(AgentAttributionWidget::default()));
-        widgets.push(Box::new(OtherAIWidget::default()));
-        if FeatureFlag::AgentModeComputerUse.is_enabled() {
-            widgets.push(Box::new(CloudAgentComputerUseWidget::default()));
-        }
-    }
-    Some(AISubpage::WarpAgent) => {
+            Some(AISubpage::WarpAgent) => {
                 // Oz page: global toggle + Active AI + Input + Other
                 widgets.push(Box::new(GlobalAIWidget::default()));
                 if ai_settings
@@ -1557,23 +1558,24 @@ impl AISettingsPageView {
                 if voice_supported {
                     widgets.push(Box::new(VoiceWidget::default()));
                 }
-            widgets.push(Box::new(ApiKeysWidget::new(ctx)));
-            widgets.push(Box::new(AwsBedrockWidget::new(ctx)));
-        #[cfg(not(target_family = "wasm"))]
-        {
-            let flag_enabled = FeatureFlag::OpenAiCompatibleEndpoints.is_enabled();
-            log::warn!("OpenAiCompatibleEndpoints flag enabled: {flag_enabled}");
-            if flag_enabled {
-                widgets.push(Box::new(OpenAiCompatibleWidget::new(ctx)));
+                widgets.push(Box::new(ApiKeysWidget::new(ctx)));
+                widgets.push(Box::new(AwsBedrockWidget::new(ctx)));
+                #[cfg(not(target_family = "wasm"))]
+                {
+                    let flag_enabled = FeatureFlag::OpenAiCompatibleEndpoints.is_enabled();
+                    log::debug!("OpenAiCompatibleEndpoints flag enabled: {flag_enabled}");
+                    if flag_enabled {
+                        widgets.push(Box::new(OpenAiCompatibleWidget::new(ctx)));
+                    }
+                }
+                widgets.push(Box::new(QuickAgentCommandsWidget::new(ctx)));
+                widgets.push(Box::new(AgentAttributionWidget::default()));
+                widgets.push(Box::new(OtherAIWidget::default()));
+                if FeatureFlag::AgentModeComputerUse.is_enabled() {
+                    widgets.push(Box::new(CloudAgentComputerUseWidget::default()));
+                }
             }
-        }
-        widgets.push(Box::new(AgentAttributionWidget::default()));
-            widgets.push(Box::new(OtherAIWidget::default()));
-            if FeatureFlag::AgentModeComputerUse.is_enabled() {
-                widgets.push(Box::new(CloudAgentComputerUseWidget::default()));
-            }
-        }
-        Some(AISubpage::Profiles) => {
+            Some(AISubpage::Profiles) => {
                 if !FeatureFlag::UsageBasedPricing.is_enabled() {
                     widgets.push(Box::new(UsageWidget::default()));
                 }
@@ -2298,7 +2300,14 @@ pub enum AISettingsPageAction {
     AddOpenAiCompatibleEndpoint,
     RemoveOpenAiCompatibleEndpoint(String),
     AddModelToEndpoint(String),
-    RemoveModelFromEndpoint { endpoint_id: String, model_index: usize },
+    RemoveModelFromEndpoint {
+        endpoint_id: String,
+        model_index: usize,
+    },
+    AddQuickAgentCommand,
+    RemoveQuickAgentCommand(usize),
+    AddQuickAgentPrompt,
+    RemoveQuickAgentPrompt(usize),
 }
 
 impl From<&AISettingsPageAction> for LoginGatedFeature {
@@ -3042,39 +3051,43 @@ impl TypedActionView for AISettingsPageView {
                 // `CloudPreferencesSyncer` as a `JsonPreference` GSO keyed
                 // `Global_AgentAttributionEnabled`; no bespoke server call needed.
                 AISettings::handle(ctx).update(ctx, |settings, ctx| {
-            report_if_error!(settings
-                .agent_attribution_enabled
-                .toggle_and_save_value(ctx));
-        });
-        ctx.notify();
-    }
-        AISettingsPageAction::ToggleOpenAiCompatibleEnabled => {
-            AISettings::handle(ctx).update(ctx, |settings, ctx| {
-                report_if_error!(settings
-                    .openai_compatible_enabled
-                    .toggle_and_save_value(ctx));
-            });
-            let subpage = self.active_subpage;
-            self.page = Self::build_page(subpage, ctx);
-            ctx.notify();
-        }
+                    report_if_error!(settings
+                        .agent_attribution_enabled
+                        .toggle_and_save_value(ctx));
+                });
+                ctx.notify();
+            }
+            AISettingsPageAction::ToggleOpenAiCompatibleEnabled => {
+                AISettings::handle(ctx).update(ctx, |settings, ctx| {
+                    report_if_error!(settings
+                        .openai_compatible_enabled
+                        .toggle_and_save_value(ctx));
+                });
+                let subpage = self.active_subpage;
+                self.page = Self::build_page(subpage, ctx);
+                ctx.notify();
+            }
             AISettingsPageAction::AddOpenAiCompatibleEndpoint => {
                 #[cfg(not(target_family = "wasm"))]
                 AISettings::handle(ctx).update(ctx, |settings, ctx| {
                     let mut endpoints = settings.openai_compatible_endpoints.value().clone();
                     let id = endpoints.generate_unique_id();
-                    endpoints.0.push(::ai::openai_compatible::OpenAiCompatibleEndpoint {
-                        id: id.clone(),
-                        display_name: "New Endpoint".to_string(),
-                        base_url: "http://localhost:11434".to_string(),
-                        has_api_key: false,
-                        api_key: None,
-                        models: vec![::ai::openai_compatible::EndpointModel {
-                            model_id: "llama3".to_string(),
-                            alias: String::new(),
-                        }],
-                    });
-                    report_if_error!(settings.openai_compatible_endpoints.set_value(endpoints, ctx));
+                    endpoints
+                        .0
+                        .push(::ai::openai_compatible::OpenAiCompatibleEndpoint {
+                            id: id.clone(),
+                            display_name: "New Endpoint".to_string(),
+                            base_url: "http://localhost:11434".to_string(),
+                            has_api_key: false,
+                            api_key: None,
+                            models: vec![::ai::openai_compatible::EndpointModel {
+                                model_id: "llama3".to_string(),
+                                alias: String::new(),
+                            }],
+                        });
+                    report_if_error!(settings
+                        .openai_compatible_endpoints
+                        .set_value(endpoints, ctx));
                 });
                 let subpage = self.active_subpage;
                 let old_page = std::mem::replace(&mut self.page, Self::build_page(subpage, ctx));
@@ -3091,7 +3104,9 @@ impl TypedActionView for AISettingsPageView {
                     AISettings::handle(ctx).update(ctx, |settings, ctx| {
                         let mut endpoints = settings.openai_compatible_endpoints.value().clone();
                         endpoints.0.retain(|e| e.id != *id);
-                        report_if_error!(settings.openai_compatible_endpoints.set_value(endpoints, ctx));
+                        report_if_error!(settings
+                            .openai_compatible_endpoints
+                            .set_value(endpoints, ctx));
                     });
                 }
                 let subpage = self.active_subpage;
@@ -3104,19 +3119,26 @@ impl TypedActionView for AISettingsPageView {
                 AISettings::handle(ctx).update(ctx, |settings, ctx| {
                     let mut endpoints = settings.openai_compatible_endpoints.value().clone();
                     if let Some(endpoint) = endpoints.0.iter_mut().find(|e| e.id == *endpoint_id) {
-                        endpoint.models.push(::ai::openai_compatible::EndpointModel {
-                            model_id: String::new(),
-                            alias: String::new(),
-                        });
+                        endpoint
+                            .models
+                            .push(::ai::openai_compatible::EndpointModel {
+                                model_id: String::new(),
+                                alias: String::new(),
+                            });
                     }
-                    report_if_error!(settings.openai_compatible_endpoints.set_value(endpoints, ctx));
+                    report_if_error!(settings
+                        .openai_compatible_endpoints
+                        .set_value(endpoints, ctx));
                 });
                 let subpage = self.active_subpage;
                 let old_page = std::mem::replace(&mut self.page, Self::build_page(subpage, ctx));
                 self.page.inherit_scroll_states_from(&old_page);
                 ctx.notify();
             }
-            AISettingsPageAction::RemoveModelFromEndpoint { endpoint_id, model_index } => {
+            AISettingsPageAction::RemoveModelFromEndpoint {
+                endpoint_id,
+                model_index,
+            } => {
                 #[cfg(not(target_family = "wasm"))]
                 AISettings::handle(ctx).update(ctx, |settings, ctx| {
                     let mut endpoints = settings.openai_compatible_endpoints.value().clone();
@@ -3125,14 +3147,70 @@ impl TypedActionView for AISettingsPageView {
                             endpoint.models.remove(*model_index);
                         }
                     }
-                    report_if_error!(settings.openai_compatible_endpoints.set_value(endpoints, ctx));
+                    report_if_error!(settings
+                        .openai_compatible_endpoints
+                        .set_value(endpoints, ctx));
                 });
                 let subpage = self.active_subpage;
                 let old_page = std::mem::replace(&mut self.page, Self::build_page(subpage, ctx));
                 self.page.inherit_scroll_states_from(&old_page);
                 ctx.notify();
             }
-}
+            AISettingsPageAction::AddQuickAgentCommand => {
+                AISettings::handle(ctx).update(ctx, |settings, ctx| {
+                    let mut commands = settings.quick_agent_commands.value().clone();
+                    commands.push(crate::settings::AgentQuickCommand {
+                        label: "List".to_string(),
+                        command: "ls".to_string(),
+                    });
+                    report_if_error!(settings.quick_agent_commands.set_value(commands, ctx));
+                });
+                let subpage = self.active_subpage;
+                let old_page = std::mem::replace(&mut self.page, Self::build_page(subpage, ctx));
+                self.page.inherit_scroll_states_from(&old_page);
+                ctx.notify();
+            }
+            AISettingsPageAction::RemoveQuickAgentCommand(index) => {
+                AISettings::handle(ctx).update(ctx, |settings, ctx| {
+                    let mut commands = settings.quick_agent_commands.value().clone();
+                    if *index < commands.len() {
+                        commands.remove(*index);
+                    }
+                    report_if_error!(settings.quick_agent_commands.set_value(commands, ctx));
+                });
+                let subpage = self.active_subpage;
+                let old_page = std::mem::replace(&mut self.page, Self::build_page(subpage, ctx));
+                self.page.inherit_scroll_states_from(&old_page);
+                ctx.notify();
+            }
+            AISettingsPageAction::AddQuickAgentPrompt => {
+                AISettings::handle(ctx).update(ctx, |settings, ctx| {
+                    let mut prompts = settings.quick_agent_prompts.value().clone();
+                    prompts.push(crate::settings::AgentQuickCommand {
+                        label: "Continue".to_string(),
+                        command: "continue".to_string(),
+                    });
+                    report_if_error!(settings.quick_agent_prompts.set_value(prompts, ctx));
+                });
+                let subpage = self.active_subpage;
+                let old_page = std::mem::replace(&mut self.page, Self::build_page(subpage, ctx));
+                self.page.inherit_scroll_states_from(&old_page);
+                ctx.notify();
+            }
+            AISettingsPageAction::RemoveQuickAgentPrompt(index) => {
+                AISettings::handle(ctx).update(ctx, |settings, ctx| {
+                    let mut prompts = settings.quick_agent_prompts.value().clone();
+                    if *index < prompts.len() {
+                        prompts.remove(*index);
+                    }
+                    report_if_error!(settings.quick_agent_prompts.set_value(prompts, ctx));
+                });
+                let subpage = self.active_subpage;
+                let old_page = std::mem::replace(&mut self.page, Self::build_page(subpage, ctx));
+                self.page.inherit_scroll_states_from(&old_page);
+                ctx.notify();
+            }
+        }
     }
 }
 
@@ -6723,9 +6801,9 @@ impl ApiKeysWidget {
 impl SettingsWidget for ApiKeysWidget {
     type View = AISettingsPageView;
 
-        fn search_terms(&self) -> &str {
-            "api keys bring your own byo openai anthropic google claude gemini gpt openrouter"
-        }
+    fn search_terms(&self) -> &str {
+        "api keys bring your own byo openai anthropic google claude gemini gpt openrouter"
+    }
 
     fn render(
         &self,
@@ -7231,7 +7309,10 @@ impl OpenAiCompatibleWidget {
                         e.base_url.clone(),
                         e.has_api_key(),
                         e.display_name.clone(),
-                        e.models.iter().map(|m| (m.model_id.clone(), m.alias.clone())).collect(),
+                        e.models
+                            .iter()
+                            .map(|m| (m.model_id.clone(), m.alias.clone()))
+                            .collect(),
                     )
                 })
                 .collect();
@@ -7254,20 +7335,59 @@ impl OpenAiCompatibleWidget {
         let mut remove_model_buttons = Vec::new();
 
         for (id, base_url, has_api_key, display_name, models) in &endpoint_data {
-            let base_url_editor = Self::create_editor(base_url, "http://localhost:11434", id, "base_url", ctx);
-            let api_key_editor = Self::create_password_editor("", if *has_api_key { "Enter new key to replace" } else { "Enter API key" }, id, ctx);
-            let display_name_editor = Self::create_editor(display_name, "My Endpoint", id, "display_name", ctx);
+            let base_url_editor =
+                Self::create_editor(base_url, "http://localhost:11434", id, "base_url", ctx);
+            let api_key_editor = Self::create_password_editor(
+                "",
+                if *has_api_key {
+                    "Enter new key to replace"
+                } else {
+                    "Enter API key"
+                },
+                id,
+                ctx,
+            );
+            let display_name_editor =
+                Self::create_editor(display_name, "My Endpoint", id, "display_name", ctx);
 
-            AISettingsPageView::update_editor_interaction_state(base_url_editor.clone(), is_interactive, ctx);
-            AISettingsPageView::update_editor_interaction_state(api_key_editor.clone(), is_interactive, ctx);
-            AISettingsPageView::update_editor_interaction_state(display_name_editor.clone(), is_interactive, ctx);
+            AISettingsPageView::update_editor_interaction_state(
+                base_url_editor.clone(),
+                is_interactive,
+                ctx,
+            );
+            AISettingsPageView::update_editor_interaction_state(
+                api_key_editor.clone(),
+                is_interactive,
+                ctx,
+            );
+            AISettingsPageView::update_editor_interaction_state(
+                display_name_editor.clone(),
+                is_interactive,
+                ctx,
+            );
 
             for (model_idx, (model_id, alias)) in models.iter().enumerate() {
-                let model_id_editor = Self::create_model_editor(model_id, "model-name", id, model_idx, "model_id", ctx);
-                let alias_editor = Self::create_model_editor(alias, "My Model", id, model_idx, "alias", ctx);
+                let model_id_editor = Self::create_model_editor(
+                    model_id,
+                    "model-name",
+                    id,
+                    model_idx,
+                    "model_id",
+                    ctx,
+                );
+                let alias_editor =
+                    Self::create_model_editor(alias, "My Model", id, model_idx, "alias", ctx);
 
-                AISettingsPageView::update_editor_interaction_state(model_id_editor.clone(), is_interactive, ctx);
-                AISettingsPageView::update_editor_interaction_state(alias_editor.clone(), is_interactive, ctx);
+                AISettingsPageView::update_editor_interaction_state(
+                    model_id_editor.clone(),
+                    is_interactive,
+                    ctx,
+                );
+                AISettingsPageView::update_editor_interaction_state(
+                    alias_editor.clone(),
+                    is_interactive,
+                    ctx,
+                );
 
                 model_id_editors.push((id.clone(), model_idx, model_id_editor));
                 model_alias_editors.push((id.clone(), model_idx, alias_editor));
@@ -7299,9 +7419,9 @@ impl OpenAiCompatibleWidget {
                 ActionButton::new("+ Add Model", SecondaryTheme)
                     .with_size(ButtonSize::Small)
                     .on_click(move |ctx| {
-                        ctx.dispatch_typed_action(
-                            AISettingsPageAction::AddModelToEndpoint(add_eid.clone()),
-                        );
+                        ctx.dispatch_typed_action(AISettingsPageAction::AddModelToEndpoint(
+                            add_eid.clone(),
+                        ));
                     })
             });
             add_model_button.update(ctx, |button, ctx| {
@@ -7315,9 +7435,7 @@ impl OpenAiCompatibleWidget {
                     .with_size(ButtonSize::Small)
                     .on_click(move |ctx| {
                         ctx.dispatch_typed_action(
-                            AISettingsPageAction::RemoveOpenAiCompatibleEndpoint(
-                                remove_id.clone(),
-                            ),
+                            AISettingsPageAction::RemoveOpenAiCompatibleEndpoint(remove_id.clone()),
                         );
                     })
             });
@@ -7478,14 +7596,20 @@ impl OpenAiCompatibleWidget {
                                     endpoint.has_api_key = true;
                                     endpoint.api_key = Some(buffer_text.clone());
                                     ApiKeyManager::handle(ctx).update(ctx, |manager, ctx| {
-                                        manager.set_custom_endpoint_api_key(&endpoint.id, Some(buffer_text.clone()), ctx);
+                                        manager.set_custom_endpoint_api_key(
+                                            &endpoint.id,
+                                            Some(buffer_text.clone()),
+                                            ctx,
+                                        );
                                     });
                                 }
                             }
                             _ => {}
                         }
                     }
-                    report_if_error!(settings.openai_compatible_endpoints.set_value(endpoints, ctx));
+                    report_if_error!(settings
+                        .openai_compatible_endpoints
+                        .set_value(endpoints, ctx));
                 });
                 ctx.notify();
             }
@@ -7516,7 +7640,9 @@ impl OpenAiCompatibleWidget {
                             }
                         }
                     }
-                    report_if_error!(settings.openai_compatible_endpoints.set_value(endpoints, ctx));
+                    report_if_error!(settings
+                        .openai_compatible_endpoints
+                        .set_value(endpoints, ctx));
                 });
                 ctx.notify();
             }
@@ -7580,9 +7706,13 @@ impl OpenAiCompatibleWidget {
             } else {
                 appearance.theme().disabled_ui_text_color()
             };
-            let status_el = Text::new_inline(status_text.to_string(), appearance.ui_font_family(), CONTENT_FONT_SIZE - 1.)
-                .with_color(status_color.into())
-                .finish();
+            let status_el = Text::new_inline(
+                status_text.to_string(),
+                appearance.ui_font_family(),
+                CONTENT_FONT_SIZE - 1.,
+            )
+            .with_color(status_color.into())
+            .finish();
             column.add_child(api_key_field);
             column.add_child(status_el);
         }
@@ -7599,13 +7729,25 @@ impl OpenAiCompatibleWidget {
                 "Model Alias".to_string()
             };
 
-            if let Some((_, _, editor)) = self.model_id_editors.iter().find(|(eid, mi, _)| eid == &id && *mi == model_idx) {
+            if let Some((_, _, editor)) = self
+                .model_id_editors
+                .iter()
+                .find(|(eid, mi, _)| eid == &id && *mi == model_idx)
+            {
                 column.add_child(render_field(model_label, editor.clone()));
             }
-            if let Some((_, _, editor)) = self.model_alias_editors.iter().find(|(eid, mi, _)| eid == &id && *mi == model_idx) {
+            if let Some((_, _, editor)) = self
+                .model_alias_editors
+                .iter()
+                .find(|(eid, mi, _)| eid == &id && *mi == model_idx)
+            {
                 column.add_child(render_field(alias_label, editor.clone()));
             }
-            if let Some((_, _, button)) = self.remove_model_buttons.iter().find(|(eid, mi, _)| eid == &id && *mi == model_idx) {
+            if let Some((_, _, button)) = self
+                .remove_model_buttons
+                .iter()
+                .find(|(eid, mi, _)| eid == &id && *mi == model_idx)
+            {
                 column.add_child(button.as_ref(app).render(app));
             }
         }
@@ -7614,7 +7756,11 @@ impl OpenAiCompatibleWidget {
             column.add_child(button.as_ref(app).render(app));
         }
 
-        if let Some((_, button)) = self.remove_endpoint_buttons.iter().find(|(eid, _)| eid == &id) {
+        if let Some((_, button)) = self
+            .remove_endpoint_buttons
+            .iter()
+            .find(|(eid, _)| eid == &id)
+        {
             column.add_child(button.as_ref(app).render(app));
         }
 
@@ -7655,20 +7801,23 @@ impl OpenAiCompatibleWidget {
     ),
 );
 
-if is_enabled {
-    column.add_child(
-        render_ai_setting_description(
-            "Changes are saved automatically.",
-            is_any_ai_enabled,
-            app,
-        ),
-    );
-    for endpoint in endpoints.iter() {
-            column.add_child(self.render_endpoint_card(appearance, endpoint, is_any_ai_enabled, app));
-        }
+        if is_enabled {
+            column.add_child(render_ai_setting_description(
+                "Changes are saved automatically.",
+                is_any_ai_enabled,
+                app,
+            ));
+            for endpoint in endpoints.iter() {
+                column.add_child(self.render_endpoint_card(
+                    appearance,
+                    endpoint,
+                    is_any_ai_enabled,
+                    app,
+                ));
+            }
 
-        column.add_child(self.add_endpoint_button.as_ref(app).render(app));
-    }
+            column.add_child(self.add_endpoint_button.as_ref(app).render(app));
+        }
 
         column.finish()
     }
@@ -7708,6 +7857,361 @@ impl SettingsWidget for OpenAiCompatibleWidget {
             )
             .with_child(self.render_section(appearance, app, &view.local_only_icon_tooltip_states));
 
+        Container::new(column.finish())
+            .with_margin_bottom(HEADER_PADDING)
+            .finish()
+    }
+}
+
+struct QuickAgentCommandsWidget {
+    label_editors: Vec<(usize, ViewHandle<EditorView>)>,
+    command_editors: Vec<(usize, ViewHandle<EditorView>)>,
+    remove_buttons: Vec<(usize, ViewHandle<ActionButton>)>,
+    add_button: ViewHandle<ActionButton>,
+    prompt_label_editors: Vec<(usize, ViewHandle<EditorView>)>,
+    prompt_editors: Vec<(usize, ViewHandle<EditorView>)>,
+    prompt_remove_buttons: Vec<(usize, ViewHandle<ActionButton>)>,
+    prompt_add_button: ViewHandle<ActionButton>,
+}
+
+impl QuickAgentCommandsWidget {
+    fn new(ctx: &mut ViewContext<<Self as SettingsWidget>::View>) -> Self {
+        let is_any_ai_enabled = AISettings::as_ref(ctx).is_any_ai_enabled(ctx);
+        let commands = AISettings::as_ref(ctx).quick_agent_commands.value().clone();
+        let prompts = AISettings::as_ref(ctx).quick_agent_prompts.value().clone();
+
+        let mut label_editors = Vec::new();
+        let mut command_editors = Vec::new();
+        let mut remove_buttons = Vec::new();
+        let mut prompt_label_editors = Vec::new();
+        let mut prompt_editors = Vec::new();
+        let mut prompt_remove_buttons = Vec::new();
+
+        for (index, command) in commands.iter().enumerate() {
+            let label_editor =
+                Self::create_editor(&command.label, "Button label", index, true, false, ctx);
+            let command_editor = Self::create_editor(
+                &command.command,
+                "Shell command to run",
+                index,
+                false,
+                false,
+                ctx,
+            );
+            AISettingsPageView::update_editor_interaction_state(
+                label_editor.clone(),
+                is_any_ai_enabled,
+                ctx,
+            );
+            AISettingsPageView::update_editor_interaction_state(
+                command_editor.clone(),
+                is_any_ai_enabled,
+                ctx,
+            );
+
+            let remove_button = ctx.add_typed_action_view(move |_| {
+                ActionButton::new("Remove", SecondaryTheme)
+                    .with_size(ButtonSize::Small)
+                    .on_click(move |ctx| {
+                        ctx.dispatch_typed_action(AISettingsPageAction::RemoveQuickAgentCommand(
+                            index,
+                        ));
+                    })
+            });
+            remove_button.update(ctx, |button, ctx| {
+                button.set_disabled(!is_any_ai_enabled, ctx);
+            });
+
+            label_editors.push((index, label_editor));
+            command_editors.push((index, command_editor));
+            remove_buttons.push((index, remove_button));
+        }
+
+        for (index, prompt) in prompts.iter().enumerate() {
+            let label_editor =
+                Self::create_editor(&prompt.label, "Button label", index, true, true, ctx);
+            let prompt_editor =
+                Self::create_editor(&prompt.command, "Prompt to send", index, false, true, ctx);
+            AISettingsPageView::update_editor_interaction_state(
+                label_editor.clone(),
+                is_any_ai_enabled,
+                ctx,
+            );
+            AISettingsPageView::update_editor_interaction_state(
+                prompt_editor.clone(),
+                is_any_ai_enabled,
+                ctx,
+            );
+
+            let remove_button = ctx.add_typed_action_view(move |_| {
+                ActionButton::new("Remove", SecondaryTheme)
+                    .with_size(ButtonSize::Small)
+                    .on_click(move |ctx| {
+                        ctx.dispatch_typed_action(AISettingsPageAction::RemoveQuickAgentPrompt(
+                            index,
+                        ));
+                    })
+            });
+            remove_button.update(ctx, |button, ctx| {
+                button.set_disabled(!is_any_ai_enabled, ctx);
+            });
+
+            prompt_label_editors.push((index, label_editor));
+            prompt_editors.push((index, prompt_editor));
+            prompt_remove_buttons.push((index, remove_button));
+        }
+
+        let add_button = ctx.add_typed_action_view(|_| {
+            ActionButton::new("+ Add Quick Command", SecondaryTheme)
+                .with_size(ButtonSize::Small)
+                .on_click(|ctx| {
+                    ctx.dispatch_typed_action(AISettingsPageAction::AddQuickAgentCommand);
+                })
+        });
+        add_button.update(ctx, |button, ctx| {
+            button.set_disabled(!is_any_ai_enabled, ctx);
+        });
+        let prompt_add_button = ctx.add_typed_action_view(|_| {
+            ActionButton::new("+ Add Quick Prompt", SecondaryTheme)
+                .with_size(ButtonSize::Small)
+                .on_click(|ctx| {
+                    ctx.dispatch_typed_action(AISettingsPageAction::AddQuickAgentPrompt);
+                })
+        });
+        prompt_add_button.update(ctx, |button, ctx| {
+            button.set_disabled(!is_any_ai_enabled, ctx);
+        });
+
+        Self {
+            label_editors,
+            command_editors,
+            remove_buttons,
+            add_button,
+            prompt_label_editors,
+            prompt_editors,
+            prompt_remove_buttons,
+            prompt_add_button,
+        }
+    }
+
+    fn create_editor(
+        initial_value: &str,
+        placeholder: &str,
+        index: usize,
+        is_label: bool,
+        is_prompt: bool,
+        ctx: &mut ViewContext<AISettingsPageView>,
+    ) -> ViewHandle<EditorView> {
+        let value = initial_value.to_string();
+        let editor = ctx.add_typed_action_view(move |ctx| {
+            let appearance = Appearance::as_ref(ctx);
+            let options = SingleLineEditorOptions {
+                text: TextOptions {
+                    font_size_override: Some(appearance.ui_font_size()),
+                    font_family_override: Some(appearance.monospace_font_family()),
+                    text_colors_override: Some(TextColors {
+                        default_color: appearance.theme().active_ui_text_color(),
+                        disabled_color: appearance.theme().disabled_ui_text_color(),
+                        hint_color: appearance.theme().disabled_ui_text_color(),
+                    }),
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            let mut editor = EditorView::single_line(options, ctx);
+            editor.set_placeholder_text(placeholder, ctx);
+            editor.set_buffer_text(&value, ctx);
+            editor
+        });
+
+        let editor_clone = editor.clone();
+        ctx.subscribe_to_view(&editor, move |_, _, event, ctx| {
+            if matches!(event, EditorEvent::Blurred | EditorEvent::Enter) {
+                let buffer_text = editor_clone.as_ref(ctx).buffer_text(ctx);
+                AISettings::handle(ctx).update(ctx, |settings, ctx| {
+                    if is_prompt {
+                        let mut prompts = settings.quick_agent_prompts.value().clone();
+                        if let Some(prompt) = prompts.get_mut(index) {
+                            if is_label {
+                                prompt.label = buffer_text.clone();
+                            } else {
+                                prompt.command = buffer_text.clone();
+                            }
+                        }
+                        report_if_error!(settings.quick_agent_prompts.set_value(prompts, ctx));
+                    } else {
+                        let mut commands = settings.quick_agent_commands.value().clone();
+                        if let Some(command) = commands.get_mut(index) {
+                            if is_label {
+                                command.label = buffer_text.clone();
+                            } else {
+                                command.command = buffer_text.clone();
+                            }
+                        }
+                        report_if_error!(settings.quick_agent_commands.set_value(commands, ctx));
+                    }
+                });
+                ctx.notify();
+            }
+        });
+
+        editor
+    }
+
+    fn render_command_card(
+        &self,
+        index: usize,
+        appearance: &Appearance,
+        is_enabled: bool,
+        is_prompt: bool,
+        app: &AppContext,
+    ) -> Box<dyn Element> {
+        let padding = Some(Coords {
+            top: 10.,
+            bottom: 10.,
+            left: 16.,
+            right: 16.,
+        });
+        let editor_style = UiComponentStyles {
+            padding,
+            background: Some(appearance.theme().surface_2().into()),
+            ..Default::default()
+        };
+        let render_field = |label: &str, editor: ViewHandle<EditorView>| -> Box<dyn Element> {
+            let label_el = Text::new_inline(
+                label.to_string(),
+                appearance.ui_font_family(),
+                CONTENT_FONT_SIZE,
+            )
+            .with_color(styles::header_font_color(is_enabled, app).into())
+            .finish();
+            let input = appearance
+                .ui_builder()
+                .text_input(editor)
+                .with_style(editor_style.clone())
+                .build()
+                .finish();
+            Flex::column()
+                .with_spacing(4.)
+                .with_child(label_el)
+                .with_child(input)
+                .finish()
+        };
+
+        let mut column = Flex::column().with_spacing(8.);
+        let label_editors = if is_prompt {
+            &self.prompt_label_editors
+        } else {
+            &self.label_editors
+        };
+        let value_editors = if is_prompt {
+            &self.prompt_editors
+        } else {
+            &self.command_editors
+        };
+        let remove_buttons = if is_prompt {
+            &self.prompt_remove_buttons
+        } else {
+            &self.remove_buttons
+        };
+
+        if let Some((_, editor)) = label_editors.iter().find(|(i, _)| *i == index) {
+            column.add_child(render_field("Button Label", editor.clone()));
+        }
+        if let Some((_, editor)) = value_editors.iter().find(|(i, _)| *i == index) {
+            column.add_child(render_field(
+                if is_prompt { "Prompt" } else { "Command" },
+                editor.clone(),
+            ));
+        }
+        if let Some((_, button)) = remove_buttons.iter().find(|(i, _)| *i == index) {
+            column.add_child(button.as_ref(app).render(app));
+        }
+
+        Container::new(column.finish())
+            .with_uniform_padding(12.)
+            .with_background(appearance.theme().surface_2())
+            .with_border(Border::all(1.).with_border_fill(appearance.theme().outline()))
+            .with_corner_radius(CornerRadius::with_all(Radius::Pixels(6.)))
+            .finish()
+    }
+}
+
+impl SettingsWidget for QuickAgentCommandsWidget {
+    type View = AISettingsPageView;
+
+    fn search_terms(&self) -> &str {
+        "quick commands quick prompts pinned buttons footer continue"
+    }
+
+    fn should_render(&self, _app: &AppContext) -> bool {
+        true
+    }
+
+    fn render(
+        &self,
+        view: &Self::View,
+        appearance: &Appearance,
+        app: &AppContext,
+    ) -> Box<dyn Element> {
+        let is_any_ai_enabled = AISettings::as_ref(app).is_any_ai_enabled(app);
+        let commands = AISettings::as_ref(app).quick_agent_commands.value();
+        let prompts = AISettings::as_ref(app).quick_agent_prompts.value();
+        let mut column = Flex::column()
+            .with_child(render_separator(appearance))
+            .with_child(
+                build_sub_header(
+                    appearance,
+                    "Quick Commands",
+                    Some(styles::header_font_color(is_any_ai_enabled, app)),
+                )
+                .with_padding_bottom(HEADER_PADDING)
+                .finish(),
+            )
+            .with_child(render_ai_setting_description(
+                "Pinned commands appear in the agent input footer and run in the terminal.",
+                is_any_ai_enabled,
+                app,
+            ));
+
+        for index in 0..commands.len() {
+            column.add_child(self.render_command_card(
+                index,
+                appearance,
+                is_any_ai_enabled,
+                false,
+                app,
+            ));
+        }
+        column.add_child(self.add_button.as_ref(app).render(app));
+
+        column.add_child(
+            build_sub_header(
+                appearance,
+                "Quick Prompts",
+                Some(styles::header_font_color(is_any_ai_enabled, app)),
+            )
+            .with_padding_top(HEADER_PADDING)
+            .with_padding_bottom(HEADER_PADDING)
+            .finish(),
+        );
+        column.add_child(render_ai_setting_description(
+            "Pinned prompts appear in the agent input footer and submit to the active chat.",
+            is_any_ai_enabled,
+            app,
+        ));
+        for index in 0..prompts.len() {
+            column.add_child(self.render_command_card(
+                index,
+                appearance,
+                is_any_ai_enabled,
+                true,
+                app,
+            ));
+        }
+        column.add_child(self.prompt_add_button.as_ref(app).render(app));
+
+        let _ = view;
         Container::new(column.finish())
             .with_margin_bottom(HEADER_PADDING)
             .finish()

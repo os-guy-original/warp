@@ -2221,41 +2221,43 @@ impl AIConversation {
                             });
                         }
                     }
-            } else {
-                let root_task_id = self.task_store.root_task_id().clone();
-                if let Some(mut root_task) = self.task_store.remove(&root_task_id) {
-                    if root_task.source().is_some() {
-                        log::debug!(
+                } else {
+                    let root_task_id = self.task_store.root_task_id().clone();
+                    if let Some(mut root_task) = self.task_store.remove(&root_task_id) {
+                        if root_task.source().is_some() {
+                            log::debug!(
                                 "CreateTask for root task that is already a server task; skipping upgrade"
                             );
-                        self.task_store.set_root_task(root_task);
-                    } else {
-                        let old_id = root_task_id.clone();
-                        root_task = root_task.into_server_created_task(
-                            task,
-                            None,
-                            self.todo_lists.last(),
-                            self.code_review.as_ref(),
-                        )?;
-                        ctx.emit(BlocklistAIHistoryEvent::UpgradedTask {
-                            optimistic_id: old_id,
-                            server_id: root_task.id().clone(),
-                            terminal_view_id,
-                        });
+                            self.task_store.set_root_task(root_task);
+                        } else {
+                            let old_id = root_task_id.clone();
+                            root_task = root_task.into_server_created_task(
+                                task,
+                                None,
+                                self.todo_lists.last(),
+                                self.code_review.as_ref(),
+                            )?;
+                            ctx.emit(BlocklistAIHistoryEvent::UpgradedTask {
+                                optimistic_id: old_id,
+                                server_id: root_task.id().clone(),
+                                terminal_view_id,
+                            });
 
-                        for AddedExchange { ref mut task_id, .. } in self
-                            .added_exchanges_by_response
-                            .get_mut(response_stream_id)
-                            .ok_or(UpdateConversationError::NoPendingRequest)?
-                            .iter_mut()
-                        {
-                            if *task_id == root_task_id {
-                                *task_id = root_task.id().clone();
+                            for AddedExchange {
+                                ref mut task_id, ..
+                            } in self
+                                .added_exchanges_by_response
+                                .get_mut(response_stream_id)
+                                .ok_or(UpdateConversationError::NoPendingRequest)?
+                                .iter_mut()
+                            {
+                                if *task_id == root_task_id {
+                                    *task_id = root_task.id().clone();
+                                }
                             }
+                            self.task_store.set_root_task(root_task);
                         }
-        self.task_store.set_root_task(root_task);
                     }
-                }
                 }
             }
             Action::UpdateTaskDescription(UpdateTaskDescription {

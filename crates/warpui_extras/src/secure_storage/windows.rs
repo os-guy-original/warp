@@ -24,8 +24,33 @@ impl SecureStorage {
     }
 
     fn storage_file(&self, key: &str) -> PathBuf {
-        let filename = format!("{}-{key}", self.service_name);
+        let filename = format!("{}-{}", self.service_name, Self::filename_component(key));
         self.storage_dir.join(filename)
+    }
+
+    fn filename_component(key: &str) -> String {
+        let mut filename = String::with_capacity(key.len());
+        for byte in key.bytes() {
+            match byte {
+                b'%'
+                | b'<'
+                | b'>'
+                | b':'
+                | b'"'
+                | b'/'
+                | b'\\'
+                | b'|'
+                | b'?'
+                | b'*'
+                | 0x00..=0x1F => {
+                    filename.push('%');
+                    filename.push(hex_digit(byte >> 4));
+                    filename.push(hex_digit(byte & 0x0F));
+                }
+                _ => filename.push(byte as char),
+            }
+        }
+        filename
     }
 
     fn byte_vec_to_blob(byte_vec: &mut Vec<u8>) -> CRYPT_INTEGER_BLOB {
@@ -94,13 +119,33 @@ impl super::SecureStorage for SecureStorage {
 
     fn read_value(&self, key: &str) -> Result<String, Error> {
         let storage_file = self.storage_file(key);
-        let file_bytes = std::fs::read(storage_file)?;
+        let file_bytes = std::fs::read(storage_file).map_err(|err| {
+            if err.kind() == std::io::ErrorKind::NotFound {
+                Error::NotFound
+            } else {
+                Error::from(err)
+            }
+        })?;
         Self::decrypt(file_bytes)
     }
 
     fn remove_value(&self, key: &str) -> Result<(), Error> {
         let storage_file = self.storage_file(key);
-        std::fs::remove_file(storage_file).map_err(Error::from)
+        std::fs::remove_file(storage_file).map_err(|err| {
+            if err.kind() == std::io::ErrorKind::NotFound {
+                Error::NotFound
+            } else {
+                Error::from(err)
+            }
+        })
+    }
+}
+
+fn hex_digit(nibble: u8) -> char {
+    match nibble {
+        0..=9 => (b'0' + nibble) as char,
+        10..=15 => (b'A' + (nibble - 10)) as char,
+        _ => unreachable!("nibble should be in 0..=15"),
     }
 }
 

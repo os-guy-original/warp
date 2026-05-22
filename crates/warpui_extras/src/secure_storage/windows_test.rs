@@ -28,3 +28,16 @@ fn test_encrypt_decrypt_returns_same_value() {
         );
     }
 }
+
+#[test]
+fn filename_component_escapes_windows_reserved_characters() {
+    assert_eq!(
+        SecureStorage::filename_component("CustomEndpoint:endpoint-1:api_key"),
+        "CustomEndpoint%3Aendpoint-1%3Aapi_key"
+    );
+    assert_eq!(SecureStorage::filename_component("User"), "User");
+    assert_eq!(
+        SecureStorage::filename_component("literal%3A"),
+        "literal%253A"
+    );
+}

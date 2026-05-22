@@ -217,7 +217,8 @@ impl ApiKeyManager {
         key: Option<String>,
         ctx: &mut ModelContext<Self>,
     ) {
-        let storage_key = crate::openai_compatible::OpenAiCompatibleEndpoint::secure_storage_key(endpoint_id);
+        let storage_key =
+            crate::openai_compatible::OpenAiCompatibleEndpoint::secure_storage_key(endpoint_id);
         match key {
             Some(k) if !k.is_empty() => {
                 if let Err(e) = ctx.secure_storage().write_value(&storage_key, &k) {
@@ -227,7 +228,9 @@ impl ApiKeyManager {
             _ => {
                 if let Err(e) = ctx.secure_storage().remove_value(&storage_key) {
                     if !matches!(e, secure_storage::Error::NotFound) {
-                        log::warn!("Failed to remove custom endpoint API key from secure storage: {e:#}");
+                        log::warn!(
+                            "Failed to remove custom endpoint API key from secure storage: {e:#}"
+                        );
                     }
                 }
             }
@@ -239,7 +242,8 @@ impl ApiKeyManager {
         endpoint_id: &str,
         ctx: &mut ModelContext<Self>,
     ) {
-        let storage_key = crate::openai_compatible::OpenAiCompatibleEndpoint::secure_storage_key(endpoint_id);
+        let storage_key =
+            crate::openai_compatible::OpenAiCompatibleEndpoint::secure_storage_key(endpoint_id);
         if let Err(e) = ctx.secure_storage().remove_value(&storage_key) {
             if !matches!(e, secure_storage::Error::NotFound) {
                 log::warn!("Failed to remove custom endpoint API key from secure storage: {e:#}");

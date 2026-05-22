@@ -1,12 +1,14 @@
 mod convert;
 
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+};
 
 use anyhow::anyhow;
 use futures::channel::oneshot;
 use futures::StreamExt;
 use http_client::Client;
-use std::sync::Mutex;
 
 use ai::openai_compatible::OpenAiCompatibleEndpoint;
 
@@ -15,7 +17,7 @@ use crate::server::server_api::AIApiError;
 
 use convert::{OpenAiChatRequest, OpenAiChatStreamDelta, StreamingState};
 
-pub use convert::{OpenAiCompatibleRequest, from_request_params};
+pub use convert::{from_request_params, OpenAiCompatibleRequest};
 
 #[derive(Debug, thiserror::Error)]
 pub enum OpenAiCompatibleError {
@@ -29,6 +31,48 @@ impl From<OpenAiCompatibleError> for crate::ai::agent::api::ConvertToAPITypeErro
     }
 }
 
+fn done_event() -> Event {
+    Ok(warp_multi_agent_api::ResponseEvent {
+        r#type: Some(warp_multi_agent_api::response_event::Type::Finished(
+            warp_multi_agent_api::response_event::StreamFinished {
+                token_usage: vec![],
+                should_refresh_model_config: false,
+                request_cost: None,
+                conversation_usage_metadata: None,
+                reason: Some(
+                    warp_multi_agent_api::response_event::stream_finished::Reason::Done(
+                        warp_multi_agent_api::response_event::stream_finished::Done {},
+                    ),
+                ),
+            },
+        )),
+    })
+}
+
+fn finalize_success_events(state: &Arc<Mutex<StreamingState>>, task_id: &str) -> Vec<Event> {
+    let mut tool_call_events = Vec::new();
+    {
+        let mut s = state.lock().unwrap();
+        if s.did_finish_or_fail() {
+            return vec![];
+        }
+
+        let tool_calls = s.take_accumulated_tool_calls();
+        if !tool_calls.is_empty() {
+            log::info!(
+                "Custom endpoint: finalizing {} tool calls",
+                tool_calls.len()
+            );
+            tool_call_events = convert::finalize_tool_call_events(tool_calls, task_id);
+        }
+        s.mark_finished();
+    }
+
+    let mut events = tool_call_events;
+    events.push(done_event());
+    events
+}
+
 pub async fn generate_openai_compatible_output(
     client: &Client,
     endpoint: &OpenAiCompatibleEndpoint,
@@ -37,7 +81,8 @@ pub async fn generate_openai_compatible_output(
 ) -> Result<ResponseStream, OpenAiCompatibleError> {
     let url = endpoint.chat_completions_url();
     let request_conversation_id = request.conversation_id.clone();
-    let chat_request = OpenAiChatRequest::from_request(request.clone(), &endpoint.models[0].model_id);
+    let chat_request =
+        OpenAiChatRequest::from_request(request.clone(), &endpoint.models[0].model_id);
 
     log::info!(
         "Custom endpoint request: url={}, model={}, messages={}, stream={}, tools={}",
@@ -60,7 +105,8 @@ pub async fn generate_openai_compatible_output(
     }
 
     let task_id = request.task_id.clone();
-    let conversation_id = request_conversation_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    let conversation_id =
+        request_conversation_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     let request_id = uuid::Uuid::new_v4().to_string();
     let run_id = String::new();
 
@@ -83,13 +129,21 @@ pub async fn generate_openai_compatible_output(
         })
     });
     let streaming_state = Arc::new(Mutex::new(StreamingState::new()));
+    let cancellation_seen = Arc::new(AtomicBool::new(false));
 
-    let event_source = request_builder
-        .eventsource();
+    let event_source = request_builder.eventsource();
+    let cancellation_seen_for_stream = cancellation_seen.clone();
+    let cancellation = async move {
+        let _ = cancellation_rx.await;
+        cancellation_seen_for_stream.store(true, Ordering::SeqCst);
+    };
 
     let cid_for_log = conversation_id.clone();
-    let output_stream = event_source
-        .take_until(cancellation_rx)
+    let finalizer_state = streaming_state.clone();
+    let finalizer_task_id = task_id.clone();
+    let finalizer_cancelled = cancellation_seen.clone();
+    let event_stream = event_source
+        .take_until(cancellation)
         .flat_map(move |event| {
             let task_id = task_id.clone();
             let state = streaming_state.clone();
@@ -100,37 +154,7 @@ pub async fn generate_openai_compatible_output(
 
                     if data.trim() == "[DONE]" {
                         log::debug!("Custom endpoint: received [DONE] (conversation={})", cid_for_log);
-
-                        let mut tool_call_events = Vec::new();
-                        {
-                            let mut s = state.lock().unwrap();
-                            let tool_calls = s.take_accumulated_tool_calls();
-
-                            if !tool_calls.is_empty() {
-                                log::info!("Custom endpoint: finalizing {} tool calls", tool_calls.len());
-                                tool_call_events = convert::finalize_tool_call_events(tool_calls, &task_id);
-                            }
-                        }
-
-                        let mut finish_events = tool_call_events;
-                        finish_events.push(Ok(warp_multi_agent_api::ResponseEvent {
-                            r#type: Some(
-                                warp_multi_agent_api::response_event::Type::Finished(
-                                    warp_multi_agent_api::response_event::StreamFinished {
-                                        token_usage: vec![],
-                                        should_refresh_model_config: false,
-                                        request_cost: None,
-                                        conversation_usage_metadata: None,
-                                        reason: Some(
-                                            warp_multi_agent_api::response_event::stream_finished::Reason::Done(
-                                                warp_multi_agent_api::response_event::stream_finished::Done {},
-                                            ),
-                                        ),
-                                    },
-                                ),
-                            ),
-                        }));
-                        finish_events
+                        finalize_success_events(&state, &task_id)
                     } else {
                         match serde_json::from_str::<OpenAiChatStreamDelta>(&data) {
                             Ok(delta) => {
@@ -142,6 +166,7 @@ pub async fn generate_openai_compatible_output(
                                     "Failed to parse SSE chunk from OpenAI-compatible endpoint: {e}. Raw data: {}",
                                     if data.len() > 300 { &data[..300] } else { &data }
                                 );
+                                state.lock().unwrap().mark_failed();
                                 vec![Err(Arc::new(AIApiError::Other(anyhow!(
                                     "Failed to parse response from endpoint: {e}"
                                 ))))]
@@ -175,11 +200,27 @@ pub async fn generate_openai_compatible_output(
                             "OpenAI-compatible endpoint stream error: {err}"
                         )),
                     };
+                    state.lock().unwrap().mark_failed();
                     vec![Err(Arc::new(ai_error))]
                 }
             };
             futures::stream::iter(events)
         });
+    let finalizer_stream = futures::stream::once(async move {
+        if finalizer_cancelled.load(Ordering::SeqCst) {
+            return vec![];
+        }
+
+        let events = finalize_success_events(&finalizer_state, &finalizer_task_id);
+        if !events.is_empty() {
+            log::warn!(
+                "Custom endpoint stream ended without [DONE]; emitted fallback StreamFinished"
+            );
+        }
+        events
+    })
+    .flat_map(futures::stream::iter);
+    let output_stream = event_stream.chain(finalizer_stream);
 
     let mut init_events = vec![init_event, create_task_event];
     if let Some(uq_event) = user_query_event {

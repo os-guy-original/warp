@@ -686,6 +686,14 @@ impl From<&AIApiError> for RenderableAIError {
                 will_attempt_resume: false,
                 waiting_for_network: false,
             },
+            AIApiError::MissingCustomEndpointApiKey(endpoint) => Self::Other {
+                error_message: format!(
+                    "Custom endpoint '{}' has no readable API key. Re-enter the API key in AI settings.",
+                    endpoint
+                ),
+                will_attempt_resume: false,
+                waiting_for_network: false,
+            },
             _ => Self::Other {
                 error_message: format!("Request failed with error: {value:?}"),
                 will_attempt_resume: false,
